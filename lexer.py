@@ -1,7 +1,7 @@
 import re
 
 class TokenType:
-    EXTERN = "EXTERN"
+    DEC = "DEC"
     DEF = "DEF"
     SEMICOLON = "SEMICOLON"
     IDENTIFIER = "IDENTIFIER"
@@ -11,6 +11,8 @@ class TokenType:
     RPAR = "RPAR"
     COMMA = "COMMA"
     EOF = "EOF"
+    LBRACE = "LBRACE"
+    RBRACE = "RBRACE"
 
 class Token:
     def __init__(self, type, meta):
@@ -39,7 +41,7 @@ def tokenize(code):
     # "(?<=;)|(?=;)" We use this to generate a regex which splits on all operators while also keeping them as tokens
 
     # This only supports single char operators
-    operators = ["+", "-", "*", "(", ")", ";", ","]
+    operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}"]
 
     op_regex = ""
     for op in operators:
@@ -55,12 +57,14 @@ def tokenize(code):
     raw_tokens = list(filter(None, new_raw_tokens))
 
     keywords = {
-        "extern": TokenType.EXTERN,
+        "dec": TokenType.DEC,
         "def": TokenType.DEF,
         ";": TokenType.SEMICOLON,
         "(": TokenType.LPAR,
         ")": TokenType.RPAR,
-        ",": TokenType.COMMA
+        ",": TokenType.COMMA,
+        "{": TokenType.LBRACE,
+        "}": TokenType.RBRACE
     }
 
     tokens = []
