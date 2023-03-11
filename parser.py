@@ -1,5 +1,9 @@
 from lexer import tokenize, TokenType, Token
 
+#############################################
+# Classes that are building blocks of the AST
+#############################################
+
 class NumberExpression:
     def __init__(self, value):
         self.value = value
@@ -43,6 +47,10 @@ class UnaryExpression:
     def __repr__(self):
         return f"[Unary({self.operator}) {self.operand}]"
 
+#############################################
+# Parser
+#############################################
+
 class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
@@ -58,38 +66,49 @@ class Parser:
         top_level_exprs = []
         while self.current_token.type != TokenType.EOF:
             top_level_exprs.append(self.parse_expression())
+            # Top level expressions are separated by semicolons
             if self.current_token.type != TokenType.SEMICOLON:
                raise Exception(f"Expected ; but got {self.current_token}")
-            self.advance()
+            self.advance() # Advance past the semicolon
         return top_level_exprs
     
     def parse_expression(self):
         return self.parse_term()
     
     def parse_term(self):
-        lhs = self.parse_factor()
+        lhs = self.parse_factor() #Get the first factor
+
+        # If there is no operator then this term is just a factor otherwise we need to parse the rest of the term
         while self.current_token.type == TokenType.OPERATOR and self.current_token["operator"] in ["+", "-"]:
             operator = self.current_token["operator"]
             self.advance()
             rhs = self.parse_factor()
             lhs = BinaryExpression(lhs, operator, rhs)
+            #If the loop continues beyond 1 iteration then the next factor 
+            # will be added/subtracted with the previous result: ((x + x) + x) + x
         return lhs
     
+    # TODO: Fix code duplication between parse_term and parse_factor
     def parse_factor(self):
-        lhs = self.parse_unary()
+        lhs = self.parse_unary() # Get the first unary
+
+        # If there is no operator then this factor is just a unary otherwise we need to parse the rest of the factor
         while self.current_token.type == TokenType.OPERATOR and self.current_token["operator"] in ["*"]:
             operator = self.current_token["operator"]
             self.advance()
             rhs = self.parse_unary()
             lhs = BinaryExpression(lhs, operator, rhs)
+            #If the loop continues beyond 1 iteration then the next unary
+            # will be multiplied by the previous result: ((x * x) * x) * x
         return lhs
     
     def parse_unary(self):
-        token = self.current_token
+        token = self.current_token # Get the current token which should be either a valid unary operator or a primary
         if token.type == TokenType.OPERATOR and token["operator"] in ["+", "-"]:
             self.advance()
+            #If it was a unary operator then parse the next unary which is the operand 
             return UnaryExpression(token["operator"], self.parse_unary())
-        return self.parse_primary()
+        return self.parse_primary() #If it wasn't a unary operator then it must be a primary
     
     def parse_primary(self):
         token = self.current_token
@@ -98,23 +117,29 @@ class Parser:
             return NumberExpression(token["value"])
         if token.type == TokenType.IDENTIFIER:
             self.advance()
+            #If the next token is not a ( then it is a variable
             if self.current_token.type != TokenType.LPAR:
                 return VariableExpression(token["name"])
-            #Function call
+            #If it is a ( then it is a function call: "foo(" and we need to parse the arguments
             self.advance()
             args = []
             while self.current_token.type != TokenType.RPAR:
+                #Arguments can be full expressions
                 args.append(self.parse_expression())
                 if self.current_token.type == TokenType.COMMA:
+                    #If there is a comma then we need to advance past it, if the arguments are separated by spaces
+                    #then we don't want to advance. To remove the ability to separate arguments by spaces we can 
+                    #Report an error if the next token is not a comma instead
                     self.advance()
-            self.advance()
+            self.advance() #Advance past the )
             return CallExpression(token["name"], args)
         if token.type == TokenType.LPAR:
-            self.advance()
+            # Parenthesized expression take precedence and are therefore primary
+            self.advance() #Advance past the (
             expr = self.parse_expression()
             if self.current_token.type != TokenType.RPAR:
                 raise Exception("Expected )")
-            self.advance()
+            self.advance() #Advance past the )
             return expr
 
 code = input("Ready > ")

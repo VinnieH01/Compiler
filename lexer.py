@@ -44,7 +44,7 @@ def tokenize(code):
     op_regex = ""
     for op in operators:
         op_regex += f"(?<=\{op})|(?=\{op})|"
-    op_regex = op_regex[:-1]
+    op_regex = op_regex[:-1] #Remove final |
 
     new_raw_tokens = []
 
@@ -72,7 +72,7 @@ def tokenize(code):
         elif raw_token[0].isalpha() and raw_token.isalnum():
             type = TokenType.IDENTIFIER
             meta["name"] = raw_token
-        elif raw_token.isnumeric():
+        elif raw_token.isnumeric(): #TODO: Add support for inputting floats (12.23 is currently invalid)
             type = TokenType.NUMBER
             meta["value"] = float(raw_token)
         elif re.search(op_regex, raw_token) != None:
