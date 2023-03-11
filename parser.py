@@ -120,19 +120,8 @@ class Parser:
             #If the next token is not a ( then it is a variable
             if self.current_token.type != TokenType.LPAR:
                 return VariableExpression(token["name"])
-            #If it is a ( then it is a function call: "foo(" and we need to parse the arguments
-            self.advance()
-            args = []
-            while self.current_token.type != TokenType.RPAR:
-                #Arguments can be full expressions
-                args.append(self.parse_expression())
-                if self.current_token.type == TokenType.COMMA:
-                    #If there is a comma then we need to advance past it, if the arguments are separated by spaces
-                    #then we don't want to advance. To remove the ability to separate arguments by spaces we can 
-                    #Report an error if the next token is not a comma instead
-                    self.advance()
-            self.advance() #Advance past the )
-            return CallExpression(token["name"], args)
+            #If it is a ( then it is a function call: eg. "foo(" and we need to handle it as such
+            return self.parse_function_call(token)
         if token.type == TokenType.LPAR:
             # Parenthesized expression take precedence and are therefore primary
             self.advance() #Advance past the (
@@ -141,12 +130,32 @@ class Parser:
                 raise Exception("Expected )")
             self.advance() #Advance past the )
             return expr
+    
+    def handle_function_call(self, identifier_tok):
+        self.advance() #Advance past the (
+        args = []
+        while self.current_token.type != TokenType.RPAR:
+            #Arguments can be full expressions
+            args.append(self.parse_expression())
+            #Arguments are separated by commas, if the next token is not a comma then it must be a )
+            #if it is something else then it is an error
+            if self.current_token.type != TokenType.COMMA and self.current_token.type != TokenType.RPAR:
+                raise Exception(f"Expected ',' but got {self.current_token}")
+
+            #We don't want to advance past the ) so we only advance if the next token is a comma
+            #The loop will end when the next token is a ) and advance past it 
+            if self.current_token.type == TokenType.COMMA:
+                self.advance()
+        self.advance() #Advance past the )
+        return CallExpression(identifier_tok["name"], args)
+
 
 code = input("Ready > ")
 
 tokens = tokenize(code)
 ast = Parser(tokens).parse()
 
+# Generate an AST string that can be rendered on http://mshang.ca/syntree/
 ast_str = "[Program "
 for expr in ast:
     ast_str += str(expr) + " "
