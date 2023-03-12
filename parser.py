@@ -9,14 +9,24 @@ class NumberNode:
         self.value = value
 
     def __repr__(self):
-        return f"[Number {self.value}]"
+        node_dict = {
+            "type": "Number",
+            "value": self.value
+        }
+        return str(node_dict)
+        #return f"[Number {self.value}]"
 
 class VariableNode:
     def __init__(self, name):
         self.name = name
 
     def __repr__(self):
-        return f"[Variable {self.name}]"
+        node_dict = {
+            "type": "Variable",
+            "name": self.name
+        }
+        return str(node_dict)
+        #return f"[Variable {self.name}]"
 
 class BinaryNode:
     def __init__(self, left, operator, right):
@@ -25,7 +35,14 @@ class BinaryNode:
         self.right = right
 
     def __repr__(self):
-        return f"[Binary({self.operator}) {self.left} {self.right}]"
+        node_dict = {
+            "type": "Binary",
+            "operator": self.operator,
+            "left": self.left,
+            "right": self.right
+        }
+        return str(node_dict)
+        #return f"[Binary({self.operator}) {self.left} {self.right}]"
 
 class CallNode:
     def __init__(self, callee, args):
@@ -33,11 +50,17 @@ class CallNode:
         self.args = args
 
     def __repr__(self):
-        args_str = ""
-        for arg in self.args:
-            args_str += f"{arg} "
-        args_str = args_str[:-1]
-        return f"[Call({self.callee}) {args_str}]"
+        node_dict = {
+            "type": "Call",
+            "callee": self.callee,
+            "args": self.args
+        }
+        return str(node_dict)
+        #args_str = ""
+        #for arg in self.args:
+        #    args_str += f"{arg} "
+        #args_str = args_str[:-1]
+        #return f"[Call({self.callee}) {args_str}]"
 
 class UnaryNode:
     def __init__(self, operator, operand):
@@ -45,7 +68,13 @@ class UnaryNode:
         self.operand = operand
 
     def __repr__(self):
-        return f"[Unary({self.operator}) {self.operand}]"
+        node_dict = {
+            "type": "Unary",
+            "operator": self.operator,
+            "operand": self.operand
+        }
+        return str(node_dict)
+        #return f"[Unary({self.operator}) {self.operand}]"
 
 class PrototypeNode:
     def __init__(self, name, args):
@@ -53,11 +82,17 @@ class PrototypeNode:
         self.args = args
     
     def __repr__(self):
+        node_dict = {
+            "type": "Prototype",
+            "name": self.name,
+            "args": self.args
+        }
+        return str(node_dict)
         args_str = ""
         for arg in self.args:
             args_str += f"{arg} "
         args_str = args_str[:-1]
-        return f"[Prototype {self.name} {args_str}]"
+        #return f"[Prototype {self.name} {args_str}]"
 
 class FunctionNode:
     def __init__(self, prototype, body):
@@ -65,7 +100,13 @@ class FunctionNode:
         self.body = body
 
     def __repr__(self):
-        return f"[Function {self.prototype} {self.body}]"
+        node_dict = {
+            "type": "Function",
+            "prototype": self.prototype,
+            "body": self.body
+        }
+        return str(node_dict)
+        #return f"[Function {self.prototype} {self.body}]"
 
 #############################################
 # Parser
@@ -215,17 +256,32 @@ class Parser:
         self.advance() #Advance past the }
         return FunctionNode(fn_prototype, fn_body)
 
+import sys
 
-code = input("Ready > ")
+if(len(sys.argv) != 2):
+    print("Usage: python3 parser.py <filename>")
+    exit()
+
+code = open(sys.argv[1], "r").read()
 
 tokens = tokenize(code)
 ast = Parser(tokens).parse()
 
 # Generate an AST string that can be rendered on http://mshang.ca/syntree/
-ast_str = "[Program "
+#ast_str = "[Program "
+#for expr in ast:
+#    ast_str += str(expr) + " "
+#ast_str = ast_str[:-1] + "]"
+
+# Generate an AST string for the codegen
+ast_str = "["
 for expr in ast:
-    ast_str += str(expr) + " "
-ast_str = ast_str[:-1] + "]"
+    ast_str += str(expr) + ",\n"
+ast_str = ast_str[:-2] + "]"
 
+f = open("ast", "w")
+f.write(ast_str.replace("\'", "\""))
+f.close()
 
-print(ast_str)
+import subprocess 
+subprocess.call("Compiler.exe ast", shell=True)
