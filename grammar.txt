@@ -1,0 +1,22 @@
+http://craftinginterpreters.com/representing-code.html#context-free-grammars
+
+Ascending Priority
+
+stmt            -> expr SEMICOLON
+                -> DEF IDENTIFIER LPAR (IDENTIFIER,)* RPAR LBRACE expr RBRACE SEMICOLON #Function definition
+                -> DEC IDENTIFIER LPAR (IDENTIFIER,)* RPAR SEMICOLON #Function declaration/prototype
+
+expr            -> comparison
+
+comparison      -> term ((">"|"<"|"=") term)*
+
+term            -> factor (("+"|"-") factor)*
+
+factor          -> unary ("*" unary)*
+
+unary           -> ("+"|"-") unary 
+                -> primary
+
+primary         -> (NUMBER|IDENTIFIER) 
+                -> LPAR expr RPAR
+                -> IDENTIFIER LPAR (expr,)* RPAR #Function call
