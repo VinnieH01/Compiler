@@ -14,6 +14,7 @@ class TokenType:
     EOF = "EOF"
     LBRACE = "LBRACE"
     RBRACE = "RBRACE"
+    RET = "RET"
 
 class Token:
     def __init__(self, type, meta):
@@ -66,7 +67,8 @@ def tokenize(code):
         ")": TokenType.RPAR,
         ",": TokenType.COMMA,
         "{": TokenType.LBRACE,
-        "}": TokenType.RBRACE
+        "}": TokenType.RBRACE,
+        "ret": TokenType.RET
     }
 
     tokens = []

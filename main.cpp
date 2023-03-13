@@ -96,6 +96,12 @@ Value* visit_unary_node(const json& data)
     }
 }
 
+Value* visit_return_node(const json& data)
+{
+    Value* expr_val = visit_node(data["value"]);
+    return Builder->CreateRet(expr_val);
+}
+
 Function* visit_prototype_node(const json& data) 
 {
     std::vector<std::string> args = data["args"];
@@ -141,12 +147,13 @@ Value* visit_function_node(const json& data)
     for (auto& Arg : function->args())
         NamedValues[std::string(Arg.getName())] = &Arg;
 
-    Value* expr_val = visit_node(data["body"]);
-    if (function->getReturnType()->isDoubleTy()) 
+    json body_data = data["body"];
+    for (const json& data : body_data)
     {
-        Builder->CreateRet(expr_val);
+        visit_node(data);
     }
-    else if (function->getName() == "main") 
+
+    if (function->getName() == "main") 
     {
         //Currently just a "hack" so the main function can be declared as an action (void return)
         Builder->CreateRet(Constant::getIntegerValue(Type::getInt32Ty(*TheContext), APInt(32, 0)));
@@ -209,6 +216,10 @@ Value* visit_node(const json& data)
     if(type == "Unary") 
     {
         return visit_unary_node(data);
+    }
+    if (type == "Return") 
+    {
+        return visit_return_node(data);
     }
 }
 

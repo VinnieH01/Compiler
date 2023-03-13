@@ -14,7 +14,6 @@ class NumberNode:
             "value": self.value
         }
         return str(node_dict)
-        #return f"[Number {self.value}]"
 
 class VariableNode:
     def __init__(self, name):
@@ -26,7 +25,6 @@ class VariableNode:
             "name": self.name
         }
         return str(node_dict)
-        #return f"[Variable {self.name}]"
 
 class BinaryNode:
     def __init__(self, left, operator, right):
@@ -42,7 +40,6 @@ class BinaryNode:
             "right": self.right
         }
         return str(node_dict)
-        #return f"[Binary({self.operator}) {self.left} {self.right}]"
 
 class CallNode:
     def __init__(self, callee, args):
@@ -56,11 +53,6 @@ class CallNode:
             "args": self.args
         }
         return str(node_dict)
-        #args_str = ""
-        #for arg in self.args:
-        #    args_str += f"{arg} "
-        #args_str = args_str[:-1]
-        #return f"[Call({self.callee}) {args_str}]"
 
 class UnaryNode:
     def __init__(self, operator, operand):
@@ -74,7 +66,6 @@ class UnaryNode:
             "operand": self.operand
         }
         return str(node_dict)
-        #return f"[Unary({self.operator}) {self.operand}]"
 
 class PrototypeNode:
     def __init__(self, name, args, ret_type):
@@ -94,7 +85,6 @@ class PrototypeNode:
         for arg in self.args:
             args_str += f"{arg} "
         args_str = args_str[:-1]
-        #return f"[Prototype {self.name} {args_str}]"
 
 class FunctionNode:
     def __init__(self, prototype, body):
@@ -108,7 +98,17 @@ class FunctionNode:
             "body": self.body
         }
         return str(node_dict)
-        #return f"[Function {self.prototype} {self.body}]"
+
+class ReturnNode:
+    def __init__(self, value):
+        self.value = value
+
+    def __repr__(self):
+        node_dict = {
+            "type": "Return",
+            "value": self.value
+        }
+        return str(node_dict)
 
 #############################################
 # Parser
@@ -134,13 +134,14 @@ class Parser:
             elif self.current_token.type == TokenType.FN or self.current_token.type == TokenType.ACTN:
                 statements.append(self.parse_function_definition())
             else:
-                statements.append(self.parse_expression())
+                raise Exception(f"Top level expressions are not allowed")
+                #statements.append(self.parse_expression())
             # Statements are separated by semicolons
             if self.current_token.type != TokenType.SEMICOLON:
                raise Exception(f"Expected ; but got {self.current_token}")
             self.advance() # Advance past the semicolon
         return statements
-    
+
     def parse_expression(self):
         return self.parse_comparison()
     
@@ -249,7 +250,7 @@ class Parser:
         fn_prototype = self.parse_function_declaration()
         if self.current_token.type != TokenType.LBRACE:
             raise Exception("Expected { after function prototype")
-        self.advance() #Advance past the {
+        '''self.advance() #Advance past the {
         if self.current_token.type != TokenType.RBRACE:
             fn_body = self.parse_expression()
         else:
@@ -257,8 +258,27 @@ class Parser:
             fn_body = None
         if self.current_token.type != TokenType.RBRACE:
             raise Exception(f"Expected }} after function body but got {self.current_token}")
+        self.advance() #Advance past the }'''
+
+        return FunctionNode(fn_prototype, self.parse_expression_block())
+    
+    def parse_expression_block(self):
+        self.advance() #Advance past the {
+        expressions = []
+        while self.current_token.type != TokenType.RBRACE:
+            if self.current_token.type == TokenType.RET:
+                expressions.append(self.parse_return())
+            else:
+                expressions.append(self.parse_expression())
+            if self.current_token.type != TokenType.SEMICOLON:
+                raise Exception(f"Expected ; after expression but got {self.current_token}")
+            self.advance() #Advance past the ;
         self.advance() #Advance past the }
-        return FunctionNode(fn_prototype, fn_body)
+        return expressions
+
+    def parse_return(self):
+        self.advance() # Advance past the ret keyword
+        return ReturnNode(self.parse_expression())
 
 import sys
 
