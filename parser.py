@@ -77,15 +77,17 @@ class UnaryNode:
         #return f"[Unary({self.operator}) {self.operand}]"
 
 class PrototypeNode:
-    def __init__(self, name, args):
+    def __init__(self, name, args, ret_type):
         self.name = name
         self.args = args
+        self.ret_type = ret_type
     
     def __repr__(self):
         node_dict = {
             "type": "Prototype",
             "name": self.name,
-            "args": self.args
+            "args": self.args,
+            "ret_type": self.ret_type
         }
         return str(node_dict)
         args_str = ""
@@ -124,11 +126,12 @@ class Parser:
             self.current_token = self.tokens[self.index]
     
     def parse(self):
+        #The term statement is used loosely here. It can be a function declaration, function definition, or expression
         statements = []
         while self.current_token.type != TokenType.EOF:
             if self.current_token.type == TokenType.DEC:
                 statements.append(self.parse_function_declaration())
-            elif self.current_token.type == TokenType.DEF:
+            elif self.current_token.type == TokenType.FN or self.current_token.type == TokenType.ACTN:
                 statements.append(self.parse_function_definition())
             else:
                 statements.append(self.parse_expression())
@@ -139,30 +142,25 @@ class Parser:
         return statements
     
     def parse_expression(self):
-        return self.parse_term()
+        return self.parse_comparison()
     
-    def parse_term(self):
-        lhs = self.parse_factor() #Get the first factor
+    def parse_comparison(self):
+        return self.parse_binary_expression(self.parse_term, ["<", ">", "="])
 
-        # If there is no operator then this term is just a factor otherwise we need to parse the rest of the term
-        while self.current_token.type == TokenType.OPERATOR and self.current_token["operator"] in ["+", "-"]:
-            operator = self.current_token["operator"]
-            self.advance()
-            rhs = self.parse_factor()
-            lhs = BinaryNode(lhs, operator, rhs)
-            #If the loop continues beyond 1 iteration then the next factor 
-            # will be added/subtracted with the previous result: ((x + x) + x) + x
-        return lhs
+    def parse_term(self):
+        return self.parse_binary_expression(self.parse_factor, ["+", "-"])
     
-    # TODO: Fix code duplication between parse_term and parse_factor
     def parse_factor(self):
-        lhs = self.parse_unary() # Get the first unary
+        return self.parse_binary_expression(self.parse_unary, ["*"])
+    
+    def parse_binary_expression(self, operand_parse_fn, operators):
+        lhs = operand_parse_fn() # Get the first operand
 
         # If there is no operator then this factor is just a unary otherwise we need to parse the rest of the factor
-        while self.current_token.type == TokenType.OPERATOR and self.current_token["operator"] in ["*"]:
+        while self.current_token.type == TokenType.OPERATOR and self.current_token["operator"] in operators:
             operator = self.current_token["operator"]
             self.advance()
-            rhs = self.parse_unary()
+            rhs = operand_parse_fn()
             lhs = BinaryNode(lhs, operator, rhs)
             #If the loop continues beyond 1 iteration then the next unary
             # will be multiplied by the previous result: ((x * x) * x) * x
@@ -182,7 +180,7 @@ class Parser:
             self.advance()
             return NumberNode(token["value"])
         if token.type == TokenType.IDENTIFIER:
-            self.advance()
+            self.advance() #TODO: DO A PEEK HERE INSTEAD AND DONT SEND TOKEN TO FUNCTION CALL
             #If the next token is not a ( then it is a variable
             if self.current_token.type != TokenType.LPAR:
                 return VariableNode(token["name"])
@@ -218,9 +216,15 @@ class Parser:
         return CallNode(identifier_tok["name"], args)
     
     def parse_function_declaration(self):
-        self.advance() #Advance past the extern/def keyword
+        non_returning = False
+        if(self.current_token.type == TokenType.ACTN):
+            non_returning = True
+        self.advance() #Advance past the dec/fn/act keyword
+        if(self.current_token.type == TokenType.ACTN): #This second check is for the case "dec act"
+            non_returning = True
+            self.advance() #Advance past the act keyword
         if self.current_token.type != TokenType.IDENTIFIER:
-            raise Exception("Expected identifier after extern")
+            raise Exception("Expected identifier after dec/fn/act")
         fn_name = self.current_token["name"]
         self.advance() #Advance past the function name
         if self.current_token.type != TokenType.LPAR:
@@ -239,7 +243,7 @@ class Parser:
             if self.current_token.type == TokenType.COMMA:
                 self.advance()
         self.advance() #Advance past the )
-        return PrototypeNode(fn_name, args)
+        return PrototypeNode(fn_name, args, "void" if non_returning else "double")
     
     def parse_function_definition(self):
         fn_prototype = self.parse_function_declaration()
@@ -267,12 +271,6 @@ code = open(sys.argv[1], "r").read()
 tokens = tokenize(code)
 ast = Parser(tokens).parse()
 
-# Generate an AST string that can be rendered on http://mshang.ca/syntree/
-#ast_str = "[Program "
-#for expr in ast:
-#    ast_str += str(expr) + " "
-#ast_str = ast_str[:-1] + "]"
-
 # Generate an AST string for the codegen
 ast_str = "["
 for expr in ast:
@@ -282,6 +280,3 @@ ast_str = ast_str[:-2] + "]"
 f = open("ast", "w")
 f.write(ast_str.replace("\'", "\""))
 f.close()
-
-import subprocess 
-subprocess.call("Compiler.exe ast", shell=True)

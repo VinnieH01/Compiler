@@ -64,6 +64,18 @@ Value* visit_binary_node(const json& data)
     {
         return Builder->CreateFMul(L, R, "subtmp");
     }
+    if (operation == "<" || operation == ">" || operation == "=")
+    {
+        if(operation == "<")
+            L = Builder->CreateFCmpULT(L, R, "cmptmp");
+        else if(operation == ">")
+            L = Builder->CreateFCmpUGT(L, R, "cmptmp");
+        else if (operation == "=")
+            L = Builder->CreateFCmpUEQ(L, R, "cmptmp");
+
+        // Convert bool 0/1 to double 0.0 or 1.0
+        return Builder->CreateUIToFP(L, Type::getDoubleTy(*TheContext), "booltmp");
+    }
 }
 
 Value* visit_unary_node(const json& data) 
@@ -91,7 +103,13 @@ Function* visit_prototype_node(const json& data)
 
     // Make the function type:  double(double,double) etc.
     std::vector<Type*> Doubles(args.size(), Type::getDoubleTy(*TheContext));
-    FunctionType* FT = FunctionType::get(Type::getDoubleTy(*TheContext), Doubles, false);
+    
+    //Currently just a "hack" so the main function can be declared as an action (void return)
+    Type* return_type = name == "main" ? Type::getInt32Ty(*TheContext)
+        : data["ret_type"] == "void" ?
+        Type::getVoidTy(*TheContext) 
+        : Type::getDoubleTy(*TheContext);
+    FunctionType* FT = FunctionType::get(return_type, Doubles, false);
 
     Function* F = Function::Create(FT, Function::ExternalLinkage, name, TheModule.get());
 
@@ -123,15 +141,20 @@ Value* visit_function_node(const json& data)
     for (auto& Arg : function->args())
         NamedValues[std::string(Arg.getName())] = &Arg;
 
-    if (Value* RetVal = visit_node(data["body"])) {
-        // Finish off the function.
-        Builder->CreateRet(RetVal);
-
-        // Validate the generated code, checking for consistency.
-        verifyFunction(*function);
-
-        return function;
+    Value* expr_val = visit_node(data["body"]);
+    if (function->getReturnType()->isDoubleTy()) 
+    {
+        Builder->CreateRet(expr_val);
     }
+    else if (function->getName() == "main") 
+    {
+        //Currently just a "hack" so the main function can be declared as an action (void return)
+        Builder->CreateRet(Constant::getIntegerValue(Type::getInt32Ty(*TheContext), APInt(32, 0)));
+    }
+
+    verifyFunction(*function);
+
+    return function;
 }
 
 Value* visit_call_node(const json& data) 
@@ -150,6 +173,8 @@ Value* visit_call_node(const json& data)
             return nullptr;
     }
 
+    //Cannot give void type a name 
+    if (CalleeF->getReturnType()->isVoidTy()) return Builder->CreateCall(CalleeF, ArgsV);
     return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
@@ -207,7 +232,7 @@ int main(int argc, char* argv[])
     }
 
 
-	//TheModule->print(outs(), nullptr);
+	TheModule->print(outs(), nullptr);
 
     std::error_code EC;
     llvm::raw_fd_ostream OS("module", EC);

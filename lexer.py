@@ -2,7 +2,8 @@ import re
 
 class TokenType:
     DEC = "DEC"
-    DEF = "DEF"
+    FN = "FN"
+    ACTN = "ACTN"
     SEMICOLON = "SEMICOLON"
     IDENTIFIER = "IDENTIFIER"
     NUMBER = "NUMBER"
@@ -41,7 +42,7 @@ def tokenize(code):
     # "(?<=;)|(?=;)" We use this to generate a regex which splits on all operators while also keeping them as tokens
 
     # This only supports single char operators
-    operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}"]
+    operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<"]
 
     op_regex = ""
     for op in operators:
@@ -58,7 +59,8 @@ def tokenize(code):
 
     keywords = {
         "dec": TokenType.DEC,
-        "def": TokenType.DEF,
+        "fn": TokenType.FN,
+        "actn": TokenType.ACTN,
         ";": TokenType.SEMICOLON,
         "(": TokenType.LPAR,
         ")": TokenType.RPAR,
