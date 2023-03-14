@@ -1,12 +1,12 @@
 http://craftinginterpreters.com/representing-code.html#context-free-grammars
 
-stmt            -> assignment
-                -> FN|ACT IDENTIFIER LPAR (IDENTIFIER,)* RPAR LBRACE (expr|return)+ RBRACE SEMICOLON #Function/Non-returning function definition
+stmt            -> FN|ACT IDENTIFIER LPAR (IDENTIFIER,)* RPAR LBRACE (expr|return|assignment)+ RBRACE SEMICOLON #Function/Non-returning function definition
                 -> DEC ACT? IDENTIFIER LPAR (IDENTIFIER,)* RPAR SEMICOLON #Function declaration/prototype
 
 return          -> RET expr
 
-assignment      -> IDENTIFIER ("=") expr
+assignment      -> IDENTIFIER ("#") expr
+                -> LET IDENTIFIER ("#") expr
 
 expr            -> comparison
 

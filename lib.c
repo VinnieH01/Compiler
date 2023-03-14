@@ -1,3 +1,5 @@
+//Library with useful functions that match the possible signatures in the language (only doubles)
+
 #include <stdio.h>
 
 void print(double x) 

@@ -15,6 +15,7 @@ class TokenType:
     LBRACE = "LBRACE"
     RBRACE = "RBRACE"
     RET = "RET"
+    LET = "LET"
 
 class Token:
     def __init__(self, type, meta):
@@ -42,18 +43,29 @@ def tokenize(code):
     # The following regex selects empty chars around ";" and splits on them so from x;y you get [x, ;, y]
     # "(?<=;)|(?=;)" We use this to generate a regex which splits on all operators while also keeping them as tokens
 
-    # This only supports single char operators
-    operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<"]
+    operators_0 = ["\:\="] #Here we add multi char operators which contain other operators eg. == has =. 
+                         #This is to prevent the regex from splitting on the = in ==.
+    operators_1 = ["\+", "\-", "\*", "\(", "\)", "\;", "\,", "\{", "\}", "\=", "\>", "\<"] 
 
-    op_regex = ""
-    for op in operators:
-        op_regex += f"(?<=\{op})|(?=\{op})|"
-    op_regex = op_regex[:-1] #Remove final |
+    op_regex_0 = ""
+    for op in operators_0:
+        op_regex_0 += f"(?<={op})|(?={op})|"
+    op_regex_0 = op_regex_0[:-1] #Remove final |
+
+    op_regex_1 = ""
+    for op in operators_1:
+        op_regex_1 += f"(?<={op})|(?={op})|"
+    op_regex_1 = op_regex_1[:-1] #Remove final |
 
     new_raw_tokens = []
 
     for raw_token in raw_tokens:
-        new_raw_tokens += re.split(op_regex, raw_token)
+        split_token = re.split(op_regex_0, raw_token) #Split on multi char operators
+        for token in split_token:
+            if token not in (op.replace("\\", "") for op in operators_0): #If the token is not a multi char operator (because we dont want to split on them)
+                new_raw_tokens += re.split(op_regex_1, token)             #also remove the escape char from the operators      
+            else:
+                new_raw_tokens.append(token)
 
     #Remove empty strings
     raw_tokens = list(filter(None, new_raw_tokens))
@@ -68,7 +80,8 @@ def tokenize(code):
         ",": TokenType.COMMA,
         "{": TokenType.LBRACE,
         "}": TokenType.RBRACE,
-        "ret": TokenType.RET
+        "ret": TokenType.RET,
+        "let": TokenType.LET
     }
 
     tokens = []
@@ -83,7 +96,7 @@ def tokenize(code):
         elif raw_token.isnumeric(): #TODO: Add support for inputting floats (12.23 is currently invalid)
             type = TokenType.NUMBER
             meta["value"] = float(raw_token)
-        elif re.search(op_regex, raw_token) != None:
+        elif re.search(op_regex_0, raw_token) or re.search(op_regex_1, raw_token) != None:
             type = TokenType.OPERATOR
             meta["operator"] = raw_token
         else:

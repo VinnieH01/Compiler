@@ -15,7 +15,7 @@ class NumberNode:
         }
         return str(node_dict)
 
-class VariableNode:
+class VariableNode: #Variable reference
     def __init__(self, name):
         self.name = name
 
@@ -110,6 +110,19 @@ class ReturnNode:
         }
         return str(node_dict)
 
+class LetNode:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+    def __repr__(self):
+        node_dict = {
+            "type": "Let",
+            "name": self.name,
+            "value": self.value
+        }
+        return str(node_dict)
+
 #############################################
 # Parser
 #############################################
@@ -125,6 +138,11 @@ class Parser:
         if self.index < len(self.tokens):
             self.current_token = self.tokens[self.index]
     
+    def peek(self, n=1):
+        if self.index + n < len(self.tokens):
+            return self.tokens[self.index + n]
+        return None
+
     def parse(self):
         #The term statement is used loosely here. It can be a function declaration, function definition, or expression
         statements = []
@@ -250,24 +268,38 @@ class Parser:
         fn_prototype = self.parse_function_declaration()
         if self.current_token.type != TokenType.LBRACE:
             raise Exception("Expected { after function prototype")
-        '''self.advance() #Advance past the {
-        if self.current_token.type != TokenType.RBRACE:
-            fn_body = self.parse_expression()
-        else:
-            # If the function body is empty then the body is None
-            fn_body = None
-        if self.current_token.type != TokenType.RBRACE:
-            raise Exception(f"Expected }} after function body but got {self.current_token}")
-        self.advance() #Advance past the }'''
-
         return FunctionNode(fn_prototype, self.parse_expression_block())
     
+    def parse_assignment(self):
+        variable = self.parse_primary() #The left side of the assignment is a variable which is a primary (identfier)
+        if not isinstance(variable, VariableNode):
+            raise Exception("Left side of assignment must be a variable")
+        if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != ":=":
+            raise Exception(f"Expected := after variable name in assignment but got {self.current_token}")
+        self.advance() #Advance past the #
+        return BinaryNode(variable, ":=", self.parse_expression())
+
+    def parse_let(self):
+        self.advance() #Advance past the let keyword
+        if self.current_token.type != TokenType.IDENTIFIER:
+            raise Exception("Expected identifier after let")
+        variable = self.current_token["name"]
+        self.advance() #Advance past the variable name
+        if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != ":=":
+            raise Exception(f"Expected := after variable name in assignment but got {self.current_token}")
+        self.advance() #Advance past the #
+        return LetNode(variable, self.parse_expression())
+
     def parse_expression_block(self):
         self.advance() #Advance past the {
         expressions = []
         while self.current_token.type != TokenType.RBRACE:
             if self.current_token.type == TokenType.RET:
                 expressions.append(self.parse_return())
+            elif self.current_token.type == TokenType.IDENTIFIER and self.peek().type == TokenType.OPERATOR and self.peek()["operator"] == ":=":
+                expressions.append(self.parse_assignment())
+            elif self.current_token.type == TokenType.LET:
+                expressions.append(self.parse_let())
             else:
                 expressions.append(self.parse_expression())
             if self.current_token.type != TokenType.SEMICOLON:

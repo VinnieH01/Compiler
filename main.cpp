@@ -30,7 +30,17 @@ using json = nlohmann::json;
 static std::unique_ptr<LLVMContext> TheContext;
 static std::unique_ptr<Module> TheModule;
 static std::unique_ptr<IRBuilder<>> Builder;
-static std::map<std::string, Value*> NamedValues;
+static std::map<std::string, AllocaInst*> NamedValues;
+
+/// CreateEntryBlockAlloca - Create an alloca instruction in the entry block of
+/// the function.  This is used for mutable variables etc.
+static AllocaInst* create_entry_block_alloca(Function* TheFunction,
+    const std::string& VarName) {
+    IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
+        TheFunction->getEntryBlock().begin());
+    return TmpB.CreateAlloca(Type::getDoubleTy(*TheContext), nullptr,
+        VarName);
+}
 
 Value* visit_node(const json&);
 
@@ -41,16 +51,33 @@ Value* visit_number_node(const json& data)
 
 Value* visit_variable_node(const json& data) 
 {
-    Value* V = NamedValues[data["name"]];
-    return V;
+    AllocaInst* A = NamedValues[data["name"]];
+    return Builder->CreateLoad(A->getAllocatedType(), A, std::string(data["name"]));
+}
+
+Value* visit_let_node(const json& data) 
+{
+    Function* function = Builder->GetInsertBlock()->getParent();
+    AllocaInst* Alloca = create_entry_block_alloca(function, data["name"]);
+    Value* value = visit_node(data["value"]);
+    NamedValues[data["name"]] = Alloca;
+    return Builder->CreateStore(value, Alloca);
 }
 
 Value* visit_binary_node(const json& data) 
 {
+    std::string operation = data["operator"];
+
+    if (operation == ":=")
+    {
+        Value* val = visit_node(data["right"]);
+        Value* variable = NamedValues[data["left"]["name"]];
+
+        return Builder->CreateStore(val, variable);
+    }
+
     Value* L = visit_node(data["left"]);
     Value* R = visit_node(data["right"]);
-
-    std::string operation = data["operator"];
 
     if (operation == "+") 
     {
@@ -144,8 +171,15 @@ Value* visit_function_node(const json& data)
 	
     // Record the function arguments in the NamedValues map.
     NamedValues.clear();
-    for (auto& Arg : function->args())
-        NamedValues[std::string(Arg.getName())] = &Arg;
+    for (auto& Arg : function->args()) {
+        //Create an alloca for this variable at the start of the function
+        AllocaInst* Alloca = create_entry_block_alloca(function, Arg.getName().str());
+
+        //Store the initial value in the alloca
+        Builder->CreateStore(&Arg, Alloca);
+
+        NamedValues[std::string(Arg.getName())] = Alloca;
+    }
 
     json body_data = data["body"];
     for (const json& data : body_data)
@@ -157,6 +191,11 @@ Value* visit_function_node(const json& data)
     {
         //Currently just a "hack" so the main function can be declared as an action (void return)
         Builder->CreateRet(Constant::getIntegerValue(Type::getInt32Ty(*TheContext), APInt(32, 0)));
+    }
+    else if(function->getReturnType()->isVoidTy()) 
+    {
+        //Return at the end of void function
+        Builder->CreateRetVoid();
     }
 
     verifyFunction(*function);
@@ -220,6 +259,10 @@ Value* visit_node(const json& data)
     if (type == "Return") 
     {
         return visit_return_node(data);
+    }
+    if (type == "Let") 
+    {
+        return visit_let_node(data);
     }
 }
 
