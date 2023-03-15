@@ -31,3 +31,42 @@ actn main()
     fib(scan());
 };
 ```
+## Here's an example using loops.
+
+```rust
+dec actn print(x);
+dec scan();
+
+fn fib(n) 
+{
+    let a := 1;
+    let b := 1;
+    let c := 0;
+
+    let i := 3;
+    loop 
+    {
+        c := a + b;
+        a := b;
+        b := c;
+
+        i := i + 1;
+        if i > (n + 1) { break; };
+    };
+
+    ret b;
+};
+
+actn main() 
+{
+    let max := scan();	
+    print(1);
+    let i := 2;
+    loop
+    {
+        print(fib(i));
+        i := i + 1;
+        if i > max { break; };
+    };
+};
+```
