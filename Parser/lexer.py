@@ -18,6 +18,8 @@ class TokenType:
     LET = "LET"
     IF = "IF"
     ELSE = "ELSE"
+    BREAK = "BREAK"
+    LOOP = "LOOP"
 
 class Token:
     def __init__(self, type, meta):
@@ -85,7 +87,9 @@ def tokenize(code):
         "ret": TokenType.RET,
         "let": TokenType.LET,
         "if": TokenType.IF,
-        "else": TokenType.ELSE
+        "else": TokenType.ELSE,
+        "break": TokenType.BREAK,
+        "loop": TokenType.LOOP
     }
 
     tokens = []

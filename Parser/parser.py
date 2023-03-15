@@ -138,6 +138,27 @@ class IfNode:
         }
         return str(node_dict)
 
+class LoopNode:
+    def __init__(self, body):
+        self.body = body
+
+    def __repr__(self):
+        node_dict = {
+            "type": "Loop",
+            "body": self.body
+        }
+        return str(node_dict)
+
+class BreakNode:
+    def __init__(self):
+        pass
+
+    def __repr__(self):
+        node_dict = {
+            "type": "Break"
+        }
+        return str(node_dict)
+
 #############################################
 # Parser
 #############################################
@@ -159,7 +180,6 @@ class Parser:
         return None
 
     def parse(self):
-        #The term statement is used loosely here. It can be a function declaration, function definition, or expression
         statements = []
         while self.current_token.type != TokenType.EOF:
             if self.current_token.type == TokenType.DEC:
@@ -288,7 +308,7 @@ class Parser:
         fn_prototype = self.parse_function_declaration()
         if self.current_token.type != TokenType.LBRACE:
             raise Exception("Expected { after function prototype")
-        return FunctionNode(fn_prototype, self.parse_expression_block())
+        return FunctionNode(fn_prototype, self.parse_statement_block())
     
     def parse_assignment(self):
         variable = self.parse_primary() #The left side of the assignment is a variable which is a primary (identfier)
@@ -315,7 +335,7 @@ class Parser:
         condition = self.parse_expression()
         if self.current_token.type != TokenType.LBRACE:
             raise Exception("Expected { after if condition")
-        then = self.parse_expression_block()
+        then = self.parse_statement_block()
         if self.current_token.type == TokenType.SEMICOLON:
             return IfNode(condition, then, [])
             # Dont want to advance past the semicolon because it is used to separate statements 
@@ -325,29 +345,40 @@ class Parser:
         self.advance() #Advance past the else keyword
         if self.current_token.type != TokenType.LBRACE:
             raise Exception("Expected { after else")
-        else_ = self.parse_expression_block()
+        else_ = self.parse_statement_block()
         return IfNode(condition, then, else_)
         # Again, dont want to advance past semicolon because it is the responsibility of the calling function
-        
-    def parse_expression_block(self):
+    
+    def parse_loop(self):
+        self.advance() #Advance past the loop keyword
+        if self.current_token.type != TokenType.LBRACE:
+            raise Exception("Expected { after loop keyword")
+        return LoopNode(self.parse_statement_block())
+
+    def parse_statement_block(self):
         self.advance() #Advance past the {
-        expressions = []
+        statements = []
         while self.current_token.type != TokenType.RBRACE:
             if self.current_token.type == TokenType.RET:
-                expressions.append(self.parse_return())
+                statements.append(self.parse_return())
             elif self.current_token.type == TokenType.IDENTIFIER and self.peek().type == TokenType.OPERATOR and self.peek()["operator"] == ":=":
-                expressions.append(self.parse_assignment())
+                statements.append(self.parse_assignment())
             elif self.current_token.type == TokenType.LET:
-                expressions.append(self.parse_let())
+                statements.append(self.parse_let())
             elif self.current_token.type == TokenType.IF:
-                expressions.append(self.parse_if_statement())
+                statements.append(self.parse_if_statement())
+            elif self.current_token.type == TokenType.LOOP:
+                statements.append(self.parse_loop())
+            elif self.current_token.type == TokenType.BREAK:
+                self.advance() #Advance past the break keyword
+                statements.append(BreakNode())
             else:
-                expressions.append(self.parse_expression())
+                statements.append(self.parse_expression())
             if self.current_token.type != TokenType.SEMICOLON:
                 raise Exception(f"Expected ; after expression but got {self.current_token}")
             self.advance() #Advance past the ;
         self.advance() #Advance past the }
-        return expressions
+        return statements
 
     def parse_return(self):
         self.advance() # Advance past the ret keyword

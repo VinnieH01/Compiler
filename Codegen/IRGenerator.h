@@ -20,6 +20,9 @@ private:
 
 	std::map<std::string, llvm::AllocaInst*> named_values;
 
+    //This is used to keep track of where a "break" keyword should branch to.
+    llvm::BasicBlock* loop_break_block;
+
     llvm::Value* visit_number_node(const nlohmann::json& data);
     llvm::Value* visit_variable_node(const nlohmann::json& data);
     llvm::Value* visit_let_node(const nlohmann::json& data);
@@ -30,6 +33,8 @@ private:
     llvm::Value* visit_function_node(const nlohmann::json& data);
     llvm::Value* visit_call_node(const nlohmann::json& data);
     llvm::Value* visit_if_node(const nlohmann::json& data);
+    llvm::Value* visit_loop_node(const nlohmann::json& data);
+    llvm::Value* visit_break_node(const nlohmann::json& data);
 
     llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name);
     llvm::GlobalVariable* create_global_variable(const std::string& variable_name, llvm::Constant* init_val);
