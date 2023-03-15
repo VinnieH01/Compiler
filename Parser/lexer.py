@@ -16,6 +16,8 @@ class TokenType:
     RBRACE = "RBRACE"
     RET = "RET"
     LET = "LET"
+    IF = "IF"
+    ELSE = "ELSE"
 
 class Token:
     def __init__(self, type, meta):
@@ -81,7 +83,9 @@ def tokenize(code):
         "{": TokenType.LBRACE,
         "}": TokenType.RBRACE,
         "ret": TokenType.RET,
-        "let": TokenType.LET
+        "let": TokenType.LET,
+        "if": TokenType.IF,
+        "else": TokenType.ELSE
     }
 
     tokens = []

@@ -123,6 +123,21 @@ class LetNode:
         }
         return str(node_dict)
 
+class IfNode:
+    def __init__(self, condition, then, else_):
+        self.condition = condition
+        self.then = then
+        self.else_ = else_
+
+    def __repr__(self):
+        node_dict = {
+            "type": "If",
+            "condition": self.condition,
+            "then": self.then,
+            "else": self.else_
+        }
+        return str(node_dict)
+
 #############################################
 # Parser
 #############################################
@@ -295,6 +310,25 @@ class Parser:
         self.advance() #Advance past the #
         return LetNode(variable, self.parse_expression())
 
+    def parse_if_statement(self):
+        self.advance() #Advance past the if keyword
+        condition = self.parse_expression()
+        if self.current_token.type != TokenType.LBRACE:
+            raise Exception("Expected { after if condition")
+        then = self.parse_expression_block()
+        if self.current_token.type == TokenType.SEMICOLON:
+            return IfNode(condition, then, [])
+            # Dont want to advance past the semicolon because it is used to separate statements 
+            # and not tecnically part of the statement therefore it is the responisibility of the calling function
+        if self.current_token.type != TokenType.ELSE:
+            raise Exception(f"Expected else or ';' after if block but got {self.current_token}")
+        self.advance() #Advance past the else keyword
+        if self.current_token.type != TokenType.LBRACE:
+            raise Exception("Expected { after else")
+        else_ = self.parse_expression_block()
+        return IfNode(condition, then, else_)
+        # Again, dont want to advance past semicolon because it is the responsibility of the calling function
+        
     def parse_expression_block(self):
         self.advance() #Advance past the {
         expressions = []
@@ -305,6 +339,8 @@ class Parser:
                 expressions.append(self.parse_assignment())
             elif self.current_token.type == TokenType.LET:
                 expressions.append(self.parse_let())
+            elif self.current_token.type == TokenType.IF:
+                expressions.append(self.parse_if_statement())
             else:
                 expressions.append(self.parse_expression())
             if self.current_token.type != TokenType.SEMICOLON:

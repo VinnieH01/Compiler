@@ -23,7 +23,10 @@ Value* IRGenerator::visit_node(const json& data)
         { "Unary", [this](const json& j) { return visit_unary_node(j); } },
         { "Return", [this](const json& j) { return visit_return_node(j); } },
         { "Let", [this](const json& j) { return visit_let_node(j); } },
+        { "If", [this](const json& j) { return visit_if_node(j); }},
     };
+
+    auto tpm = std::string((data["type"]));
 
     return dispatch.at((data["type"]))(data);
 }
@@ -216,9 +219,9 @@ Value* IRGenerator::visit_function_node(const json& data)
         builder->CreateRetVoid();
     }
 
-    bool fail = verifyFunction(*function);
+    bool fail = verifyFunction(*function, &outs());
 
-    if (fail) throw std::runtime_error("Function verification failed: " + prototype["name"]);
+    if (fail) throw std::runtime_error("Function verification failed");
 
     //Optimize function
     function_pass_manager->run(*function);
@@ -247,6 +250,78 @@ Value* IRGenerator::visit_call_node(const json& data)
     //Cannot give void type a name 
     if (callee->getReturnType()->isVoidTy()) return builder->CreateCall(callee, arg_values);
     return builder->CreateCall(callee, arg_values, "fnret");
+}
+
+Value* IRGenerator::visit_if_node(const nlohmann::json& data)
+{
+    Value* condition = visit_node(data["condition"]);
+
+    // Convert condition to a bool so 0.0 becomes false
+    condition = builder->CreateFCmpONE(condition, ConstantFP::get(*context, APFloat(0.0)), "ifcond");
+
+    Function* function = builder->GetInsertBlock()->getParent();
+
+    // Create blocks for the then and else cases.  Insert the 'then' block at the
+    // end of the function (Where we are, as it goes top to bottom).
+    BasicBlock* then_block = BasicBlock::Create(*context, "then", function);
+    BasicBlock* else_block = BasicBlock::Create(*context, "else");
+    BasicBlock* continue_block = BasicBlock::Create(*context, "ifcont");
+
+    builder->CreateCondBr(condition, then_block, else_block);
+
+    builder->SetInsertPoint(then_block);
+
+    json then_data = data["then"];
+    bool ret_in_block = false;
+    for (const json& data : then_data)
+    {
+        //If we find a return we want to break out of this loop since nothing can run after the return anyway.
+        //Without this the verifier would complain and the function would be invalid.
+        visit_node(data);
+        if (data["type"] == "Return") 
+        {
+            ret_in_block = true;
+            break;
+        }
+    }
+
+    //We can only have one terminator
+    if(!ret_in_block) 
+    {
+        //Branch to continue after then is done
+        builder->CreateBr(continue_block);
+    }
+
+    //Insert else at end of function
+    else_block->insertInto(function);
+
+    builder->SetInsertPoint(else_block);
+
+    json else_data = data["else"];
+    ret_in_block = false;
+    for (const json& data : else_data)
+    {
+        visit_node(data);
+        if (data["type"] == "Return")
+        {
+            ret_in_block = true;
+            break;
+        }
+    }
+
+    //We can only have one terminator
+    if (!ret_in_block)
+    {
+        //Branch to continue after then is done
+        builder->CreateBr(continue_block);
+    }
+
+    //Add the continue block at the end
+    continue_block->insertInto(function);
+    builder->SetInsertPoint(continue_block);
+
+    //TODO: What to return here...
+    return condition;
 }
 
 AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string& variable_name) {
