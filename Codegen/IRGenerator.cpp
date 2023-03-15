@@ -7,7 +7,7 @@ using namespace nlohmann;
 using namespace llvm;
 
 IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::unique_ptr<Module>& mdl, const std::unique_ptr<IRBuilder<>>& bldr, const std::unique_ptr<legacy::FunctionPassManager>& fpm)
-    : context(ctx), module(mdl), builder(bldr), function_pass_manager(fpm)
+    : context(ctx), module(mdl), builder(bldr), function_pass_manager(fpm), in_function(false)
 {}
 
 Value* IRGenerator::visit_node(const json& data)
@@ -37,6 +37,14 @@ Value* IRGenerator::visit_variable_node(const json& data)
 {
     std::string var_name = data["name"];
 
+    GlobalVariable* g_var = module->getNamedGlobal((std::string)data["name"]);
+
+    //Global variable takes precedence over local
+    if(g_var) 
+    {
+        return builder->CreateLoad(g_var->getValueType(), g_var, std::string(data["name"]));
+    }
+
     if (!named_values.count(var_name)) 
         throw std::runtime_error("Variable does not exist: " + var_name);
 
@@ -46,18 +54,29 @@ Value* IRGenerator::visit_variable_node(const json& data)
 
 Value* IRGenerator::visit_let_node(const json& data)
 {
-    Function* function = builder->GetInsertBlock()->getParent();
-    AllocaInst* alloca_inst = create_alloca_at_top(function, data["name"]);
-
     Value* value = visit_node(data["value"]);
 
-    std::string var_name = data["name"];
+    if (!in_function)
+    {
+        //We are outside of a function and should declare variable globally.
 
-    if (named_values.count(var_name))
-        throw std::runtime_error("Cannot redeclare variable: " + var_name);
+        //TODO: Cast to Constant* is scary.. for now its fine because the parser disallows anything else
+        return create_global_variable(data["name"], (Constant*)value);
+    }
+    else
+    {
+        Function* function = builder->GetInsertBlock()->getParent();
 
-    named_values[data["name"]] = alloca_inst;
-    return builder->CreateStore(value, alloca_inst);
+        AllocaInst* alloca_inst = create_alloca_at_top(function, data["name"]);
+
+        std::string var_name = data["name"];
+
+        if (named_values.count(var_name))
+            throw std::runtime_error("Cannot redeclare variable: " + var_name);
+
+        named_values[data["name"]] = alloca_inst;
+        return builder->CreateStore(value, alloca_inst);
+    }
 }
 
 Value* IRGenerator::visit_binary_node(const json& data)
@@ -67,6 +86,14 @@ Value* IRGenerator::visit_binary_node(const json& data)
     if (operation == ":=")
     {
         Value* val = visit_node(data["right"]);
+
+        GlobalVariable* g_var = module->getNamedGlobal((std::string)data["left"]["name"]);
+
+        //Global variable takes precedence over local
+        if (g_var)
+        {
+            return builder->CreateStore(val, g_var);
+        }
         Value* variable = named_values[data["left"]["name"]];
 
         return builder->CreateStore(val, variable);
@@ -162,6 +189,8 @@ Value* IRGenerator::visit_function_node(const json& data)
     BasicBlock* function_block = BasicBlock::Create(*context, "entry", function);
     builder->SetInsertPoint(function_block);
 
+    in_function = true;
+
     // Record the function arguments in the named_values map.
     named_values.clear();
     for (Argument& arg : function->args()) 
@@ -194,6 +223,8 @@ Value* IRGenerator::visit_function_node(const json& data)
     //Optimize function
     function_pass_manager->run(*function);
 
+    in_function = false;
+
     return function;
 }
 
@@ -223,4 +254,16 @@ AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string&
 
     entry_builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
     return entry_builder.CreateAlloca(llvm::Type::getDoubleTy(*context), nullptr, variable_name);
+}
+
+GlobalVariable* IRGenerator::create_global_variable(const std::string& variable_name, Constant* init_val)
+{
+    if(module->getNamedGlobal(variable_name)) 
+        throw std::runtime_error("Cannot redefine global variable: " + variable_name);
+
+    module->getOrInsertGlobal(variable_name, Type::getDoubleTy(*context));
+    GlobalVariable* global_variable = module->getNamedGlobal(variable_name);
+    global_variable->setLinkage(GlobalValue::ExternalLinkage);
+    global_variable->setInitializer(init_val);
+    return global_variable;
 }

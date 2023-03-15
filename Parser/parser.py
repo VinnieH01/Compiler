@@ -151,6 +151,11 @@ class Parser:
                 statements.append(self.parse_function_declaration())
             elif self.current_token.type == TokenType.FN or self.current_token.type == TokenType.ACTN:
                 statements.append(self.parse_function_definition())
+            elif self.current_token.type == TokenType.LET:
+                let_statement = self.parse_let()
+                if not isinstance(let_statement.value, NumberNode):
+                    raise Exception("Global let statements must be initialized with a number")
+                statements.append(let_statement)
             else:
                 raise Exception(f"Top level expressions are not allowed")
                 #statements.append(self.parse_expression())

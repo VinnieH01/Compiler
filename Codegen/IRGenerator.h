@@ -31,6 +31,9 @@ private:
     llvm::Value* visit_call_node(const nlohmann::json& data);
 
     llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name);
+    llvm::GlobalVariable* create_global_variable(const std::string& variable_name, llvm::Constant* init_val);
+
+    bool in_function;
 public:
     IRGenerator(const std::unique_ptr<llvm::LLVMContext>&, const std::unique_ptr<llvm::Module>&, const std::unique_ptr<llvm::IRBuilder<>>&, const std::unique_ptr<llvm::legacy::FunctionPassManager>&);
     llvm::Value* visit_node(const nlohmann::json& data);

@@ -2,6 +2,7 @@ http://craftinginterpreters.com/representing-code.html#context-free-grammars
 
 stmt            -> FN|ACT IDENTIFIER LPAR (IDENTIFIER,)* RPAR LBRACE (expr|return|assignment)+ RBRACE SEMICOLON #Function/Non-returning function definition
                 -> DEC ACT? IDENTIFIER LPAR (IDENTIFIER,)* RPAR SEMICOLON #Function declaration/prototype
+                -> assignment #Only let assignment
 
 return          -> RET expr
 
