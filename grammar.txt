@@ -1,17 +1,18 @@
 http://craftinginterpreters.com/representing-code.html#context-free-grammars
 
-stmt            -> FN|ACT IDENTIFIER LPAR (IDENTIFIER,)* RPAR LBRACE (expr|return|assignment|if_statement|loop SEMICOLON)+ RBRACE SEMICOLON #Function/Non-returning function definition
+stmt            -> FN|ACT IDENTIFIER LPAR (IDENTIFIER,)* RPAR LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)+ RBRACE SEMICOLON #Function/Non-returning function definition
                 -> DEC ACT? IDENTIFIER LPAR (IDENTIFIER,)* RPAR SEMICOLON #Function declaration/prototype
                 -> assignment SEMICOLON #Only let assignment
 
-if_statement    -> IF expr LBRACE (expr|return|assignment|if_statement|loop SEMICOLON)* RBRACE
-                -> if_statement ELSE LBRACE (expr|return|assignment|if_statement)* RBRACE
-                -> if_statement ELSE IF expr LBRACE (expr|return|assignment|if_statement|loop SEMICOLON)* RBRACE
+if_statement    -> IF expr LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)* RBRACE
+                -> if_statement ELSE LBRACE (expr|termination|assignment|if_statement)* RBRACE
+                -> if_statement ELSE IF expr LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)* RBRACE
 
 loop            -> LOOP LBRACE (expr)* RBRACE
 
-return          -> RET expr
-                -> BREAK #This isn't really a return but it works the same in terms of grammar
+termination     -> RET expr
+                -> BREAK
+                -> CONTINUE
 
 assignment      -> IDENTIFIER (":=") expr
                 -> LET IDENTIFIER (":=") expr

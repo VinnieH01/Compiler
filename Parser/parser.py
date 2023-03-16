@@ -1,4 +1,5 @@
 from lexer import tokenize, TokenType, Token
+import json
 
 #############################################
 # Classes that are building blocks of the AST
@@ -149,15 +150,17 @@ class LoopNode:
         }
         return str(node_dict)
 
-class BreakNode:
-    def __init__(self):
-        pass
+class LoopTerminationNode:
+    def __init__(self, _break):
+        self._break = _break
 
     def __repr__(self):
         node_dict = {
-            "type": "Break"
+            "type": "LoopTermination",
+            "break": self._break
         }
-        return str(node_dict)
+        #This is so the bool is written as a correct json bool, should probably do this for all classes
+        return str(json.dumps(node_dict))
 
 #############################################
 # Parser
@@ -373,11 +376,12 @@ class Parser:
                 statements.append(self.parse_if_statement())
             elif self.current_token.type == TokenType.LOOP:
                 statements.append(self.parse_loop())
-            elif self.current_token.type == TokenType.BREAK:
-                self.advance() #Advance past the break keyword
-                statements.append(BreakNode())
+            elif self.current_token.type == TokenType.BREAK or self.current_token.type == TokenType.CONTINUE:
+                statements.append(LoopTerminationNode(self.current_token.type == TokenType.BREAK))
+                self.advance() #Advance past the break/continue keyword
             else:
                 statements.append(self.parse_expression())
+                
             if self.current_token.type != TokenType.SEMICOLON:
                 raise Exception(f"Expected ; after expression but got {self.current_token}")
             self.advance() #Advance past the ;

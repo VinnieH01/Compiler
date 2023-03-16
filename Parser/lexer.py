@@ -19,6 +19,7 @@ class TokenType:
     IF = "IF"
     ELSE = "ELSE"
     BREAK = "BREAK"
+    CONTINUE = "CONTINUE"
     LOOP = "LOOP"
 
 class Token:
@@ -89,7 +90,8 @@ def tokenize(code):
         "if": TokenType.IF,
         "else": TokenType.ELSE,
         "break": TokenType.BREAK,
-        "loop": TokenType.LOOP
+        "loop": TokenType.LOOP,
+        "continue": TokenType.CONTINUE
     }
 
     tokens = []

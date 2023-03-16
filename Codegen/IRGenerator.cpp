@@ -25,7 +25,7 @@ Value* IRGenerator::visit_node(const json& data)
         { "Let", [this](const json& j) { return visit_let_node(j); } },
         { "If", [this](const json& j) { return visit_if_node(j); }},
         { "Loop", [this](const json& j) { return visit_loop_node(j); }},
-        { "Break", [this](const json& j) { return visit_break_node(j); }},
+        { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }},
     };
 
     return dispatch.at((data["type"]))(data);
@@ -272,21 +272,21 @@ Value* IRGenerator::visit_if_node(const json& data)
     builder->SetInsertPoint(then_block);
 
     json then_data = data["then"];
-    bool ret_or_break_in_block = false;
+    bool terminate_in_block = false;
     for (const json& data : then_data)
     {
         //If we find a return or break we want to break out of this loop since nothing can run after the return/break anyway.
         //Without this the verifier would complain and the function would be invalid.
         visit_node(data);
-        if (data["type"] == "Return" || data["type"] == "Break")
+        if (data["type"] == "Return" || data["type"] == "LoopTermination")
         {
-            ret_or_break_in_block = true;
+            terminate_in_block = true;
             break;
         }
     }
 
     //We can only have one terminator
-    if(!ret_or_break_in_block)
+    if(!terminate_in_block)
     {
         //Branch to continue after then is done
         builder->CreateBr(continue_block);
@@ -298,19 +298,19 @@ Value* IRGenerator::visit_if_node(const json& data)
     builder->SetInsertPoint(else_block);
 
     json else_data = data["else"];
-    ret_or_break_in_block = false;
+    terminate_in_block = false;
     for (const json& data : else_data)
     {
         visit_node(data);
-        if (data["type"] == "Return" || data["type"] == "Break")
+        if (data["type"] == "Return" || data["type"] == "LoopTermination")
         {
-            ret_or_break_in_block = true;
+            terminate_in_block = true;
             break;
         }
     }
 
     //We can only have one terminator
-    if (!ret_or_break_in_block)
+    if (!terminate_in_block)
     {
         //Branch to continue after then is done
         builder->CreateBr(continue_block);
@@ -331,51 +331,57 @@ Value* IRGenerator::visit_loop_node(const json& data)
     // Create blocks for the loop and continue cases. Insert the 'loop' block at the
     // end of the function (Where we are, as it goes top to bottom).
     BasicBlock* loop_block = BasicBlock::Create(*context, "loop", function);
-    BasicBlock* continue_block = BasicBlock::Create(*context, "loopcont");
+    BasicBlock* continuation_block = BasicBlock::Create(*context, "loopcont");
 
     builder->CreateBr(loop_block);
     builder->SetInsertPoint(loop_block);
 
     json body_data = data["body"];
-    bool ret_or_break_in_block = false;
+    bool terminate_in_block = false;
     for (const json& data : body_data)
     {
         //We have to set this in the loop since an inner loop node could change it.
-        loop_break_block = continue_block;
+        //Also NOTE: "loop_continue_block" refers to the continue keyword. Not the continuation block
+        loop_break_block = continuation_block;
+        loop_continue_block = loop_block;
 
         //If we find a "return" or "break" we want to break out of this loop since nothing can run after the return/break anyway.
         //Without this the verifier would complain and the function would be invalid.
         visit_node(data);
-        if (data["type"] == "Return" || data["type"] == "Break")
+        if (data["type"] == "Return" || data["type"] == "LoopTermination")
         {
-            ret_or_break_in_block = true;
+            terminate_in_block = true;
             break;
         }
     }
 
     loop_break_block = nullptr;
+    loop_continue_block = nullptr;
 
     //We can only have one terminator
     //Normally this bool would not be set since the code "loop {...; break; ...;}" is unnecessary use of a loop... but it is valid so we need to check for it.
-    if (!ret_or_break_in_block)
+    if (!terminate_in_block)
     {
         //Branch back to the top
         builder->CreateBr(loop_block);
     }
 
     //Add the continue block at the end
-    continue_block->insertInto(function);
-    builder->SetInsertPoint(continue_block);
+    continuation_block->insertInto(function);
+    builder->SetInsertPoint(continuation_block);
 
     //TODO: What to return here...?
     return loop_block;
 }
 
-Value* IRGenerator::visit_break_node(const json& data)
+Value* IRGenerator::visit_loop_termination_node(const json& data)
 {
-    if (!loop_break_block)
-        throw std::runtime_error("Cannot break outside loop");
-    return builder->CreateBr(loop_break_block);
+    if (!loop_break_block) //Dont need to check continue as well, if one is set the other should be as well.
+        throw std::runtime_error("Cannot break/continue outside loop");
+
+    BasicBlock* branch_to = data["break"] ? loop_break_block : loop_continue_block;
+
+    return builder->CreateBr(branch_to);
 }
 
 AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string& variable_name) {
