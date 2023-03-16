@@ -7,7 +7,7 @@ using namespace nlohmann;
 using namespace llvm;
 
 IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::unique_ptr<Module>& mdl, const std::unique_ptr<IRBuilder<>>& bldr, const std::unique_ptr<legacy::FunctionPassManager>& fpm)
-    : context(ctx), module(mdl), builder(bldr), function_pass_manager(fpm), in_function(false)
+    : context(ctx), module(mdl), builder(bldr), function_pass_manager(fpm), in_function(false), loop_break_block(nullptr), loop_continue_block(nullptr)
 {}
 
 Value* IRGenerator::visit_node(const json& data)
@@ -28,7 +28,11 @@ Value* IRGenerator::visit_node(const json& data)
         { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }},
     };
 
-    return dispatch.at((data["type"]))(data);
+    std::function<Value* (const json&)> func = nullptr;
+    try { func = dispatch.at((data["type"])); }
+    catch (std::exception e) { outs() << "Unknown node type in AST: " + (std::string)data["type"]; }
+
+    return func(data);
 }
 
 Value* IRGenerator::visit_number_node(const json& data)
@@ -49,7 +53,7 @@ Value* IRGenerator::visit_variable_node(const json& data)
     }
 
     if (!named_values.count(var_name)) 
-        throw std::runtime_error("Variable does not exist: " + var_name);
+        outs() << ("Variable does not exist: " + (std::string)var_name);
 
     AllocaInst* A = named_values[var_name];
     return builder->CreateLoad(A->getAllocatedType(), A, std::string(data["name"]));
@@ -75,7 +79,7 @@ Value* IRGenerator::visit_let_node(const json& data)
         std::string var_name = data["name"];
 
         if (named_values.count(var_name))
-            throw std::runtime_error("Cannot redeclare variable: " + var_name);
+            outs() << ("Cannot redeclare variable: " + (std::string)var_name);
 
         named_values[data["name"]] = alloca_inst;
         return builder->CreateStore(value, alloca_inst);
@@ -130,7 +134,7 @@ Value* IRGenerator::visit_binary_node(const json& data)
         return builder->CreateUIToFP(lhs, Type::getDoubleTy(*context), "bool");
     }
 
-    throw std::runtime_error("Unknown operator in AST " + operation);
+    outs() << ("Unknown operator in AST " + operation);
 }
 
 Value* IRGenerator::visit_unary_node(const json& data)
@@ -149,7 +153,7 @@ Value* IRGenerator::visit_unary_node(const json& data)
         return builder->CreateFSub(zero, operand, "subtmp");
     }
 
-    throw std::runtime_error("Unknown operator in AST " + operation);
+    outs() << ("Unknown operator in AST " + operation);
 }
 
 Value* IRGenerator::visit_return_node(const json& data)
@@ -211,6 +215,12 @@ Value* IRGenerator::visit_function_node(const json& data)
     for (const json& data : body_data)
     {
         visit_node(data);
+
+        if (data["type"] == "Return")
+        {
+            //If we return there is no point in generating further instructions
+            break;
+        }
     }
 
     if (function->getReturnType()->isVoidTy())
@@ -221,7 +231,7 @@ Value* IRGenerator::visit_function_node(const json& data)
 
     bool fail = verifyFunction(*function, &outs());
 
-    if (fail) throw std::runtime_error("Function verification failed");
+    if (fail) outs() << ("Function verification failed" + function->getName());
 
     //Optimize function
     function_pass_manager->run(*function);
@@ -236,7 +246,7 @@ Value* IRGenerator::visit_call_node(const json& data)
     // Look up the name in the global module table.
     Function* callee = module->getFunction((std::string)data["callee"]);
 
-    if (!callee) throw std::runtime_error("Function does not exist: " + data["callee"]);
+    if (!callee) outs() << ("Function does not exist: " + (std::string)data["callee"]);
 
     std::vector<json> args_data = data["args"];
 
@@ -261,64 +271,46 @@ Value* IRGenerator::visit_if_node(const json& data)
 
     Function* function = builder->GetInsertBlock()->getParent();
 
-    // Create blocks for the then and else cases.  Insert the 'then' block at the
-    // end of the function (Where we are, as it goes top to bottom).
-    BasicBlock* then_block = BasicBlock::Create(*context, "then", function);
+    // Create blocks for the then and else cases, as well as continuation which is what happens after both if blocks.
+    BasicBlock* then_block = BasicBlock::Create(*context, "then");
     BasicBlock* else_block = BasicBlock::Create(*context, "else");
-    BasicBlock* continue_block = BasicBlock::Create(*context, "ifcont");
+    BasicBlock* continuation_block = BasicBlock::Create(*context, "ifcont");
 
+    //Branch to then if condition otherwise to else
     builder->CreateCondBr(condition, then_block, else_block);
 
-    builder->SetInsertPoint(then_block);
-
-    json then_data = data["then"];
-    bool terminate_in_block = false;
-    for (const json& data : then_data)
+    auto generate_block = [&](BasicBlock* block, const json& block_data)
     {
-        //If we find a return or break we want to break out of this loop since nothing can run after the return/break anyway.
-        //Without this the verifier would complain and the function would be invalid.
-        visit_node(data);
-        if (data["type"] == "Return" || data["type"] == "LoopTermination")
+        block->insertInto(function);
+        builder->SetInsertPoint(block);
+
+        bool terminate_in_block = false;
+        for (const json& data : block_data)
         {
-            terminate_in_block = true;
-            break;
+            //If we find a return or break we want to break out of this loop since nothing can run after the return/break anyway.
+            //Without this the verifier would complain and the function would be invalid.
+            visit_node(data);
+            if (data["type"] == "Return" || data["type"] == "LoopTermination")
+            {
+                terminate_in_block = true;
+                break;
+            }
         }
-    }
 
-    //We can only have one terminator
-    if(!terminate_in_block)
-    {
-        //Branch to continue after then is done
-        builder->CreateBr(continue_block);
-    }
-
-    //Insert else at end of function
-    else_block->insertInto(function);
-
-    builder->SetInsertPoint(else_block);
-
-    json else_data = data["else"];
-    terminate_in_block = false;
-    for (const json& data : else_data)
-    {
-        visit_node(data);
-        if (data["type"] == "Return" || data["type"] == "LoopTermination")
+        //If we didn't terminate in the above loop we have to do so at the end of the block
+        if (!terminate_in_block)
         {
-            terminate_in_block = true;
-            break;
+            //Branch to continue after then is done
+            builder->CreateBr(continuation_block);
         }
-    }
+    };
 
-    //We can only have one terminator
-    if (!terminate_in_block)
-    {
-        //Branch to continue after then is done
-        builder->CreateBr(continue_block);
-    }
+    generate_block(then_block, data["then"]);
+    generate_block(else_block, data["else"]);
 
     //Add the continue block at the end
-    continue_block->insertInto(function);
-    builder->SetInsertPoint(continue_block);
+    continuation_block->insertInto(function);
+    builder->SetInsertPoint(continuation_block);
 
     //TODO: What to return here...?
     return then_block;
@@ -328,12 +320,13 @@ Value* IRGenerator::visit_loop_node(const json& data)
 {
     Function* function = builder->GetInsertBlock()->getParent();
 
-    // Create blocks for the loop and continue cases. Insert the 'loop' block at the
-    // end of the function (Where we are, as it goes top to bottom).
-    BasicBlock* loop_block = BasicBlock::Create(*context, "loop", function);
+    BasicBlock* loop_block = BasicBlock::Create(*context, "loop");
     BasicBlock* continuation_block = BasicBlock::Create(*context, "loopcont");
 
+    //We need to branch here because LLVM requires all blocks be terminated somehow. The flow cannot "fall through" into the loop block.
     builder->CreateBr(loop_block);
+
+    loop_block->insertInto(function);
     builder->SetInsertPoint(loop_block);
 
     json body_data = data["body"];
@@ -377,7 +370,7 @@ Value* IRGenerator::visit_loop_node(const json& data)
 Value* IRGenerator::visit_loop_termination_node(const json& data)
 {
     if (!loop_break_block) //Dont need to check continue as well, if one is set the other should be as well.
-        throw std::runtime_error("Cannot break/continue outside loop");
+        outs() << ("Cannot break/continue outside loop");
 
     BasicBlock* branch_to = data["break"] ? loop_break_block : loop_continue_block;
 
@@ -394,7 +387,7 @@ AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string&
 GlobalVariable* IRGenerator::create_global_variable(const std::string& variable_name, Constant* init_val)
 {
     if(module->getNamedGlobal(variable_name)) 
-        throw std::runtime_error("Cannot redefine global variable: " + variable_name);
+        outs() << ("Cannot redefine global variable: " + variable_name);
 
     module->getOrInsertGlobal(variable_name, Type::getDoubleTy(*context));
     GlobalVariable* global_variable = module->getNamedGlobal(variable_name);
