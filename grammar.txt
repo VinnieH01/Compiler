@@ -5,7 +5,8 @@ stmt            -> FN|ACT IDENTIFIER LPAR (IDENTIFIER,)* RPAR LBRACE (expr|retur
                 -> assignment SEMICOLON #Only let assignment
 
 if_statement    -> IF expr LBRACE (expr|return|assignment|if_statement|loop SEMICOLON)* RBRACE
-                -> IF expr LBRACE (expr|return|assignment|if_statement|loop SEMICOLON)* RBRACE ELSE LBRACE (expr|return|assignment|if_statement)*
+                -> if_statement ELSE LBRACE (expr|return|assignment|if_statement)* RBRACE
+                -> if_statement ELSE IF expr LBRACE (expr|return|assignment|if_statement|loop SEMICOLON)* RBRACE
 
 loop            -> LOOP LBRACE (expr)* RBRACE
 

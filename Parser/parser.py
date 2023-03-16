@@ -337,12 +337,16 @@ class Parser:
             raise Exception("Expected { after if condition")
         then = self.parse_statement_block()
         if self.current_token.type == TokenType.SEMICOLON:
+            #There should be no else node if there is a semicolon.
             return IfNode(condition, then, [])
             # Dont want to advance past the semicolon because it is used to separate statements 
             # and not tecnically part of the statement therefore it is the responisibility of the calling function
         if self.current_token.type != TokenType.ELSE:
             raise Exception(f"Expected else or ';' after if block but got {self.current_token}")
         self.advance() #Advance past the else keyword
+        if self.current_token.type == TokenType.IF:
+            # We have an else if statement
+            return IfNode(condition, then, [self.parse_if_statement()])
         if self.current_token.type != TokenType.LBRACE:
             raise Exception("Expected { after else")
         else_ = self.parse_statement_block()
