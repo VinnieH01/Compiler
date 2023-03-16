@@ -1,7 +1,7 @@
 http://craftinginterpreters.com/representing-code.html#context-free-grammars
 
-stmt            -> FN|ACT IDENTIFIER LPAR (IDENTIFIER,)* RPAR LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)+ RBRACE SEMICOLON #Function/Non-returning function definition
-                -> DEC ACT? IDENTIFIER LPAR (IDENTIFIER,)* RPAR SEMICOLON #Function declaration/prototype
+stmt            -> FN|ACTN IDENTIFIER LPAR (TYPE COLON IDENTIFIER,)* RPAR ("->") TYPE LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)+ RBRACE SEMICOLON #Function/Non-returning function definition
+                -> DEC ACTN? IDENTIFIER LPAR (TYPE COLON IDENTIFIER,)* RPAR ("->") TYPE SEMICOLON #Function declaration/prototype
                 -> assignment SEMICOLON #Only let assignment
 
 if_statement    -> IF expr LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)* RBRACE
@@ -15,7 +15,7 @@ termination     -> RET expr
                 -> CONTINUE
 
 assignment      -> IDENTIFIER ("<-") expr
-                -> LET IDENTIFIER ("<-") expr
+                -> LET TYPE COLON IDENTIFIER ("<-") expr
 
 expr            -> comparison
 

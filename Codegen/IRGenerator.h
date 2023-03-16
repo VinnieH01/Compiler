@@ -20,11 +20,14 @@ private:
 
 	std::map<std::string, llvm::AllocaInst*> named_values;
 
+    //This is used to convert parser type strings to actual llvm types
+    std::map<std::string, llvm::Type*> type_names;
+
     //This is used to keep track of where a "break" or "continue" keyword should branch to.
     llvm::BasicBlock* loop_break_block;
     llvm::BasicBlock* loop_continue_block;
 
-    llvm::Value* visit_number_node(const nlohmann::json& data);
+    llvm::Value* visit_literal_node(const nlohmann::json& data);
     llvm::Value* visit_variable_node(const nlohmann::json& data);
     llvm::Value* visit_let_node(const nlohmann::json& data);
     llvm::Value* visit_binary_node(const nlohmann::json& data);
@@ -37,8 +40,8 @@ private:
     llvm::Value* visit_loop_node(const nlohmann::json& data);
     llvm::Value* visit_loop_termination_node(const nlohmann::json& data);
 
-    llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name);
-    llvm::GlobalVariable* create_global_variable(const std::string& variable_name, llvm::Constant* init_val);
+    llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name, llvm::Type* type);
+    llvm::GlobalVariable* create_global_variable(const std::string& variable_name, llvm::Type* type, llvm::Constant* init_val);
 
     bool in_function;
 public:

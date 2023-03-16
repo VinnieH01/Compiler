@@ -6,7 +6,7 @@ class TokenType:
     ACTN = "ACTN"
     SEMICOLON = "SEMICOLON"
     IDENTIFIER = "IDENTIFIER"
-    NUMBER = "NUMBER"
+    LITERAL = "LITERAL"
     OPERATOR = "OPERATOR"
     LPAR = "LPAR"
     RPAR = "RPAR"
@@ -21,6 +21,8 @@ class TokenType:
     BREAK = "BREAK"
     CONTINUE = "CONTINUE"
     LOOP = "LOOP"
+    TYPE = "TYPE"
+    COLON = "COLON"
 
 class Token:
     def __init__(self, type, meta):
@@ -37,6 +39,13 @@ class Token:
     def __getitem__(self, key):
         return self.meta[key]
 
+def is_float(str):
+    try:
+        float(str)
+        return True
+    except ValueError:
+        return False
+
 def tokenize(code):
     raw_tokens = code.split()
 
@@ -48,9 +57,9 @@ def tokenize(code):
     # The following regex selects empty chars around ";" and splits on them so from x;y you get [x, ;, y]
     # "(?<=;)|(?=;)" We use this to generate a regex which splits on all operators while also keeping them as tokens
 
-    operators_0 = ["\<\-"] #Here we add multi char operators which contain other operators eg. == has =. 
+    operators_0 = ["\<\-", "\-\>"] #Here we add multi char operators which contain other operators eg. == has =. 
                          #This is to prevent the regex from splitting on the = in ==.
-    operators_1 = ["\+", "\-", "\*", "\(", "\)", "\;", "\,", "\{", "\}", "\=", "\>", "\<"] 
+    operators_1 = ["\+", "\-", "\*", "\(", "\)", "\;", "\,", "\{", "\}", "\=", "\>", "\<", ":"] 
 
     op_regex_0 = ""
     for op in operators_0:
@@ -91,7 +100,13 @@ def tokenize(code):
         "else": TokenType.ELSE,
         "break": TokenType.BREAK,
         "loop": TokenType.LOOP,
-        "continue": TokenType.CONTINUE
+        "continue": TokenType.CONTINUE,
+        ":": TokenType.COLON,
+    }
+
+    types = {
+        "i32": "i32",
+        "f64": "f64",
     }
 
     tokens = []
@@ -100,11 +115,19 @@ def tokenize(code):
         meta = {}
         if raw_token in keywords:
             type = keywords[raw_token]
+        elif raw_token in types:
+            type = TokenType.TYPE
+            meta["data_type"] = types[raw_token]
         elif raw_token[0].isalpha() and raw_token.isalnum():
             type = TokenType.IDENTIFIER
             meta["name"] = raw_token
-        elif raw_token.isnumeric(): #TODO: Add support for inputting floats (12.23 is currently invalid)
-            type = TokenType.NUMBER
+        elif raw_token.isdecimal():
+            type = TokenType.LITERAL
+            meta["data_type"] = "i32"
+            meta["value"] = int(raw_token)
+        elif is_float(raw_token):
+            type = TokenType.LITERAL
+            meta["data_type"] = "f64"
             meta["value"] = float(raw_token)
         elif re.search(op_regex_0, raw_token) or re.search(op_regex_1, raw_token) != None:
             type = TokenType.OPERATOR

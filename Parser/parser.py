@@ -5,13 +5,15 @@ import json
 # Classes that are building blocks of the AST
 #############################################
 
-class NumberNode:
-    def __init__(self, value):
+class LiteralNode:
+    def __init__(self, value, data_type):
         self.value = value
+        self.data_type = data_type
 
     def __repr__(self):
         node_dict = {
-            "type": "Number",
+            "type": "Literal",
+            "data_type": self.data_type,
             "value": self.value
         }
         return str(node_dict)
@@ -69,8 +71,9 @@ class UnaryNode:
         return str(node_dict)
 
 class PrototypeNode:
-    def __init__(self, name, args, ret_type):
+    def __init__(self, name, arg_types, args, ret_type):
         self.name = name
+        self.arg_types = arg_types
         self.args = args
         self.ret_type = ret_type
     
@@ -78,6 +81,7 @@ class PrototypeNode:
         node_dict = {
             "type": "Prototype",
             "name": self.name,
+            "arg_types": self.arg_types,
             "args": self.args,
             "ret_type": self.ret_type
         }
@@ -112,14 +116,16 @@ class ReturnNode:
         return str(node_dict)
 
 class LetNode:
-    def __init__(self, name, value):
+    def __init__(self, name, data_type, value):
         self.name = name
+        self.data_type = data_type
         self.value = value
 
     def __repr__(self):
         node_dict = {
             "type": "Let",
             "name": self.name,
+            "data_type": self.data_type,
             "value": self.value
         }
         return str(node_dict)
@@ -191,8 +197,8 @@ class Parser:
                 statements.append(self.parse_function_definition())
             elif self.current_token.type == TokenType.LET:
                 let_statement = self.parse_let()
-                if not isinstance(let_statement.value, NumberNode):
-                    raise Exception("Global let statements must be initialized with a number")
+                if not isinstance(let_statement.value, LiteralNode):
+                    raise Exception("Global let statements must be initialized with a literal")
                 statements.append(let_statement)
             else:
                 raise Exception(f"Top level expressions are not allowed")
@@ -238,9 +244,9 @@ class Parser:
     
     def parse_primary(self):
         token = self.current_token
-        if token.type == TokenType.NUMBER:
+        if token.type == TokenType.LITERAL:
             self.advance()
-            return NumberNode(token["value"])
+            return LiteralNode(token["value"], token["data_type"])
         if token.type == TokenType.IDENTIFIER:
             self.advance() #TODO: DO A PEEK HERE INSTEAD AND DONT SEND TOKEN TO FUNCTION CALL
             #If the next token is not a ( then it is a variable
@@ -278,13 +284,13 @@ class Parser:
         return CallNode(identifier_tok["name"], args)
     
     def parse_function_declaration(self):
-        non_returning = False
+        return_type = ""
         if(self.current_token.type == TokenType.ACTN):
-            non_returning = True
-        self.advance() #Advance past the dec/fn/act keyword
-        if(self.current_token.type == TokenType.ACTN): #This second check is for the case "dec act"
-            non_returning = True
-            self.advance() #Advance past the act keyword
+            return_type = "void"
+        self.advance() #Advance past the dec/fn/actn keyword
+        if(self.current_token.type == TokenType.ACTN): #This second check is for the case "dec actn"
+            return_type = "void"
+            self.advance() #Advance past the actn keyword
         if self.current_token.type != TokenType.IDENTIFIER:
             raise Exception("Expected identifier after dec/fn/act")
         fn_name = self.current_token["name"]
@@ -293,9 +299,17 @@ class Parser:
             raise Exception("Expected ( after function name")
         self.advance() #Advance past the (
         args = []
+        arg_types = []
         while self.current_token.type != TokenType.RPAR:
+            if self.current_token.type != TokenType.TYPE:
+                raise Exception("Expected type before argument name")
+            arg_types.append(self.current_token["data_type"])
+            self.advance() #Advance past the type
+            if self.current_token.type != TokenType.COLON:
+                raise Exception("Expected : after argument type")
+            self.advance() #Advance past the :
             if self.current_token.type != TokenType.IDENTIFIER:
-                raise Exception("Expected identifier after (")
+                raise Exception("Expected identifier after type in argument list")
             args.append(self.current_token["name"])
             self.advance() #Advance past the argument name
             if self.current_token.type != TokenType.COMMA and self.current_token.type != TokenType.RPAR:
@@ -305,7 +319,15 @@ class Parser:
             if self.current_token.type == TokenType.COMMA:
                 self.advance()
         self.advance() #Advance past the )
-        return PrototypeNode(fn_name, args, "void" if non_returning else "double")
+        if return_type != "void":
+            if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != "->":
+                raise Exception("Expected -> after function name")
+            self.advance() #Advance past the ->
+            if self.current_token.type != TokenType.TYPE:
+                raise Exception("Expected return type after function name")
+            return_type = self.current_token["data_type"]
+            self.advance() #Advance past the return type
+        return PrototypeNode(fn_name, arg_types, args, return_type)
     
     def parse_function_definition(self):
         fn_prototype = self.parse_function_declaration()
@@ -324,14 +346,21 @@ class Parser:
 
     def parse_let(self):
         self.advance() #Advance past the let keyword
+        if self.current_token.type != TokenType.TYPE:
+            raise Exception("Expected type after let")
+        data_type = self.current_token["data_type"]
+        self.advance() #Advance past the type
+        if self.current_token.type != TokenType.COLON:
+            raise Exception("Expected : after type in let")
+        self.advance() #Advance past the :
         if self.current_token.type != TokenType.IDENTIFIER:
-            raise Exception("Expected identifier after let")
+            raise Exception("Expected identifier after type in let")
         variable = self.current_token["name"]
         self.advance() #Advance past the variable name
         if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != "<-":
-            raise Exception(f"Expected <- after variable name in assignment but got {self.current_token}")
-        self.advance() #Advance past the #
-        return LetNode(variable, self.parse_expression())
+            raise Exception(f"Expected <- after variable name in let assignment but got {self.current_token}")
+        self.advance() #Advance past the <- operator
+        return LetNode(variable, data_type, self.parse_expression())
 
     def parse_if_statement(self):
         self.advance() #Advance past the if keyword

@@ -7,8 +7,22 @@ using namespace nlohmann;
 using namespace llvm;
 
 IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::unique_ptr<Module>& mdl, const std::unique_ptr<IRBuilder<>>& bldr, const std::unique_ptr<legacy::FunctionPassManager>& fpm)
-    : context(ctx), module(mdl), builder(bldr), function_pass_manager(fpm), in_function(false), loop_break_block(nullptr), loop_continue_block(nullptr)
-{}
+    : 
+    context(ctx), 
+    module(mdl), 
+    builder(bldr),
+    function_pass_manager(fpm), 
+    in_function(false),
+    loop_break_block(nullptr), 
+    loop_continue_block(nullptr)
+{
+    type_names =
+    {
+        {"void", Type::getVoidTy(*context)},
+        {"i32", Type::getInt32Ty(*context)},
+        {"f64", Type::getDoubleTy(*context)}
+    };
+}
 
 Value* IRGenerator::visit_node(const json& data)
 {
@@ -17,7 +31,7 @@ Value* IRGenerator::visit_node(const json& data)
         { "Function", [this](const json& j) { return visit_function_node(j); } },
         { "Prototype", [this](const json& j) { return visit_prototype_node(j); } },
         { "Binary", [this](const json& j) { return visit_binary_node(j); } },
-        { "Number", [this](const json& j) { return visit_number_node(j); } },
+        { "Literal", [this](const json& j) { return visit_literal_node(j); } },
         { "Variable", [this](const json& j) { return visit_variable_node(j); } },
         { "Call", [this](const json& j) { return visit_call_node(j); } },
         { "Unary", [this](const json& j) { return visit_unary_node(j); } },
@@ -35,9 +49,20 @@ Value* IRGenerator::visit_node(const json& data)
     return func(data);
 }
 
-Value* IRGenerator::visit_number_node(const json& data)
+Value* IRGenerator::visit_literal_node(const json& data)
 {
-    return ConstantFP::get(*context, APFloat((double)data["value"]));
+    if (data["data_type"] == "i32") 
+    {
+        return ConstantInt::get(*context, APInt(32, (uint64_t)data["value"], true));
+    }
+    else if(data["data_type"] == "f64") 
+    {
+        return ConstantFP::get(*context, APFloat((double)data["value"]));
+    }
+
+    outs() << "Literal with datatype not supported: " + (std::string)data["name"] + " " + (std::string)data["data_type"];
+
+    return nullptr;
 }
 
 Value* IRGenerator::visit_variable_node(const json& data)
@@ -62,19 +87,26 @@ Value* IRGenerator::visit_variable_node(const json& data)
 Value* IRGenerator::visit_let_node(const json& data)
 {
     Value* value = visit_node(data["value"]);
+    Type* type = type_names.at(data["data_type"]);
+
+    if (type != value->getType())
+    {
+        outs() << "Incompatible types in let assignment: " + (std::string)data["name"];
+        return nullptr;
+    }
 
     if (!in_function)
     {
         //We are outside of a function and should declare variable globally.
 
         //TODO: Cast to Constant* is scary.. for now its fine because the parser disallows anything else
-        return create_global_variable(data["name"], (Constant*)value);
+        return create_global_variable(data["name"], type, (Constant*)value);
     }
     else
     {
         Function* function = builder->GetInsertBlock()->getParent();
 
-        AllocaInst* alloca_inst = create_alloca_at_top(function, data["name"]);
+        AllocaInst* alloca_inst = create_alloca_at_top(function, data["name"], type);
 
         std::string var_name = data["name"];
 
@@ -82,6 +114,7 @@ Value* IRGenerator::visit_let_node(const json& data)
             outs() << ("Cannot redeclare variable: " + (std::string)var_name);
 
         named_values[data["name"]] = alloca_inst;
+
         return builder->CreateStore(value, alloca_inst);
     }
 }
@@ -99,9 +132,21 @@ Value* IRGenerator::visit_binary_node(const json& data)
         //Global variable takes precedence over local
         if (g_var)
         {
+            if (val->getType() != g_var->getValueType()) 
+            {
+                outs() << "Incompatible types in assignment: " + (std::string)data["left"]["name"];
+                return nullptr;
+            }
             return builder->CreateStore(val, g_var);
         }
-        Value* variable = named_values[data["left"]["name"]];
+
+        AllocaInst* variable = named_values[data["left"]["name"]];
+
+        if (val->getType() != variable->getAllocatedType())
+        {
+            outs() << "Incompatible types in assignment: " + (std::string)data["left"]["name"];
+            return nullptr;
+        }
 
         return builder->CreateStore(val, variable);
     }
@@ -109,32 +154,65 @@ Value* IRGenerator::visit_binary_node(const json& data)
     Value* lhs = visit_node(data["left"]);
     Value* rhs = visit_node(data["right"]);
 
-    if (operation == "+")
-    {
-        return builder->CreateFAdd(lhs, rhs, "add");
-    }
-    if (operation == "-")
-    {
-        return builder->CreateFSub(lhs, rhs, "sub");
-    }
-    if (operation == "*")
-    {
-        return builder->CreateFMul(lhs, rhs, "mul");
-    }
-    if (operation == "<" || operation == ">" || operation == "=")
-    {
-        if (operation == "<")
-            lhs = builder->CreateFCmpULT(lhs, rhs, "cmplt");
-        else if (operation == ">")
-            lhs = builder->CreateFCmpUGT(lhs, rhs, "cmpgt");
-        else if (operation == "=")
-            lhs = builder->CreateFCmpUEQ(lhs, rhs, "cmpeq");
+    Type* type = lhs->getType();
 
-        // Convert bool 0/1 to double 0.0 or 1.0
-        return builder->CreateUIToFP(lhs, Type::getDoubleTy(*context), "bool");
+    if(type != rhs->getType())
+        outs() << "Incompatible types in binary operator";
+
+    if (type->isDoubleTy())
+    {
+        if (operation == "+")
+        {
+            return builder->CreateFAdd(lhs, rhs, "add");
+        }
+        if (operation == "-")
+        {
+            return builder->CreateFSub(lhs, rhs, "sub");
+        }
+        if (operation == "*")
+        {
+            return builder->CreateFMul(lhs, rhs, "mul");
+        }
+        if (operation == "<" || operation == ">" || operation == "=")
+        {
+            if (operation == "<")
+                return builder->CreateFCmpULT(lhs, rhs, "cmplt");
+            else if (operation == ">")
+                return builder->CreateFCmpUGT(lhs, rhs, "cmpgt");
+            else if (operation == "=")
+                return builder->CreateFCmpUEQ(lhs, rhs, "cmpeq");
+        }
+
+        outs() << ("Unknown operator in AST " + operation);
+    }
+    else if (type->isIntegerTy())
+    {
+        if (operation == "+")
+        {
+            return builder->CreateAdd(lhs, rhs, "add");
+        }
+        if (operation == "-")
+        {
+            return builder->CreateSub(lhs, rhs, "sub");
+        }
+        if (operation == "*")
+        {
+            return builder->CreateMul(lhs, rhs, "mul");
+        }
+        if (operation == "<" || operation == ">" || operation == "=")
+        {
+            if (operation == "<")
+                return builder->CreateICmpULT(lhs, rhs, "cmplt");
+            else if (operation == ">")
+                return builder->CreateICmpUGT(lhs, rhs, "cmpgt");
+            else if (operation == "=")
+                return builder->CreateICmpEQ(lhs, rhs, "cmpeq");
+        }
+
+        outs() << ("Unknown operator in AST " + operation);
     }
 
-    outs() << ("Unknown operator in AST " + operation);
+    outs() << "Cannot perform binary operator on type";
 }
 
 Value* IRGenerator::visit_unary_node(const json& data)
@@ -165,11 +243,19 @@ Value* IRGenerator::visit_return_node(const json& data)
 Function* IRGenerator::visit_prototype_node(const json& data)
 {
     std::vector<std::string> args = data["args"];
+    std::vector<std::string> arg_types_str = data["arg_types"];
     std::string name = data["name"];
 
-    //Create a list of double types (1 for every argument)
-    std::vector<Type*> arg_types(args.size(), Type::getDoubleTy(*context));
-    Type* return_type = data["ret_type"] == "void" ? Type::getVoidTy(*context) : Type::getDoubleTy(*context);
+    //Generate list of the Type* of each argument
+    std::vector<Type*> arg_types;
+    arg_types.reserve(arg_types_str.size());
+    for (const std::string& str : arg_types_str) 
+    {
+        arg_types.push_back(type_names.at(str));
+    }
+
+    Type* return_type = type_names.at(data["ret_type"]);
+
     FunctionType* func_type = FunctionType::get(return_type, arg_types, false);
 
     Function* function = Function::Create(func_type, Function::ExternalLinkage, name, module.get());
@@ -203,7 +289,7 @@ Value* IRGenerator::visit_function_node(const json& data)
     for (Argument& arg : function->args()) 
     {
         //Create an alloca for this variable at the start of the function
-        AllocaInst* alloca_inst = create_alloca_at_top(function, arg.getName().str());
+        AllocaInst* alloca_inst = create_alloca_at_top(function, arg.getName().str(), arg.getType());
 
         //Store the initial value in the alloca
         builder->CreateStore(&arg, alloca_inst);
@@ -246,7 +332,11 @@ Value* IRGenerator::visit_call_node(const json& data)
     // Look up the name in the global module table.
     Function* callee = module->getFunction((std::string)data["callee"]);
 
-    if (!callee) outs() << ("Function does not exist: " + (std::string)data["callee"]);
+    if (!callee) 
+    {
+        outs() << ("Function does not exist: " + (std::string)data["callee"]);
+        return nullptr;
+    }
 
     std::vector<json> args_data = data["args"];
 
@@ -266,8 +356,8 @@ Value* IRGenerator::visit_if_node(const json& data)
 {
     Value* condition = visit_node(data["condition"]);
 
-    // Convert condition to a bool so 0.0 becomes false
-    condition = builder->CreateFCmpONE(condition, ConstantFP::get(*context, APFloat(0.0)), "ifcond");
+    if (!condition->getType()->isIntegerTy(1))
+        outs() << "If statement requires bool type";
 
     Function* function = builder->GetInsertBlock()->getParent();
 
@@ -377,19 +467,19 @@ Value* IRGenerator::visit_loop_termination_node(const json& data)
     return builder->CreateBr(branch_to);
 }
 
-AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string& variable_name) {
+AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string& variable_name, Type* type) {
     static llvm::IRBuilder<> entry_builder(&func->getEntryBlock(), func->getEntryBlock().begin());
 
     entry_builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
-    return entry_builder.CreateAlloca(llvm::Type::getDoubleTy(*context), nullptr, variable_name);
+    return entry_builder.CreateAlloca(type, nullptr, variable_name);
 }
 
-GlobalVariable* IRGenerator::create_global_variable(const std::string& variable_name, Constant* init_val)
+GlobalVariable* IRGenerator::create_global_variable(const std::string& variable_name, Type* type, Constant* init_val)
 {
     if(module->getNamedGlobal(variable_name)) 
         outs() << ("Cannot redefine global variable: " + variable_name);
 
-    module->getOrInsertGlobal(variable_name, Type::getDoubleTy(*context));
+    module->getOrInsertGlobal(variable_name, type);
     GlobalVariable* global_variable = module->getNamedGlobal(variable_name);
     global_variable->setLinkage(GlobalValue::ExternalLinkage);
     global_variable->setInitializer(init_val);
