@@ -90,7 +90,7 @@ Value* IRGenerator::visit_binary_node(const json& data)
 {
     std::string operation = data["operator"];
 
-    if (operation == ":=")
+    if (operation == "<-")
     {
         Value* val = visit_node(data["right"]);
 

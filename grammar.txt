@@ -14,8 +14,8 @@ termination     -> RET expr
                 -> BREAK
                 -> CONTINUE
 
-assignment      -> IDENTIFIER (":=") expr
-                -> LET IDENTIFIER (":=") expr
+assignment      -> IDENTIFIER ("<-") expr
+                -> LET IDENTIFIER ("<-") expr
 
 expr            -> comparison
 

@@ -317,10 +317,10 @@ class Parser:
         variable = self.parse_primary() #The left side of the assignment is a variable which is a primary (identfier)
         if not isinstance(variable, VariableNode):
             raise Exception("Left side of assignment must be a variable")
-        if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != ":=":
-            raise Exception(f"Expected := after variable name in assignment but got {self.current_token}")
+        if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != "<-":
+            raise Exception(f"Expected <- after variable name in assignment but got {self.current_token}")
         self.advance() #Advance past the #
-        return BinaryNode(variable, ":=", self.parse_expression())
+        return BinaryNode(variable, "<-", self.parse_expression())
 
     def parse_let(self):
         self.advance() #Advance past the let keyword
@@ -328,8 +328,8 @@ class Parser:
             raise Exception("Expected identifier after let")
         variable = self.current_token["name"]
         self.advance() #Advance past the variable name
-        if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != ":=":
-            raise Exception(f"Expected := after variable name in assignment but got {self.current_token}")
+        if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != "<-":
+            raise Exception(f"Expected <- after variable name in assignment but got {self.current_token}")
         self.advance() #Advance past the #
         return LetNode(variable, self.parse_expression())
 
@@ -368,7 +368,7 @@ class Parser:
         while self.current_token.type != TokenType.RBRACE:
             if self.current_token.type == TokenType.RET:
                 statements.append(self.parse_return())
-            elif self.current_token.type == TokenType.IDENTIFIER and self.peek().type == TokenType.OPERATOR and self.peek()["operator"] == ":=":
+            elif self.current_token.type == TokenType.IDENTIFIER and self.peek().type == TokenType.OPERATOR and self.peek()["operator"] == "<-":
                 statements.append(self.parse_assignment())
             elif self.current_token.type == TokenType.LET:
                 statements.append(self.parse_let())

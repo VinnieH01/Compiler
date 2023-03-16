@@ -48,7 +48,7 @@ def tokenize(code):
     # The following regex selects empty chars around ";" and splits on them so from x;y you get [x, ;, y]
     # "(?<=;)|(?=;)" We use this to generate a regex which splits on all operators while also keeping them as tokens
 
-    operators_0 = ["\:\="] #Here we add multi char operators which contain other operators eg. == has =. 
+    operators_0 = ["\<\-"] #Here we add multi char operators which contain other operators eg. == has =. 
                          #This is to prevent the regex from splitting on the = in ==.
     operators_1 = ["\+", "\-", "\*", "\(", "\)", "\;", "\,", "\{", "\}", "\=", "\>", "\<"] 
 
