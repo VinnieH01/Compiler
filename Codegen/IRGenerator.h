@@ -43,6 +43,7 @@ private:
     llvm::Value* visit_if_node(const nlohmann::json& data);
     llvm::Value* visit_loop_node(const nlohmann::json& data);
     llvm::Value* visit_loop_termination_node(const nlohmann::json& data);
+    llvm::Value* visit_cast_node(const nlohmann::json& data);
 
     llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name, llvm::Type* type);
     llvm::GlobalVariable* create_global_variable(const std::string& variable_name, llvm::Type* type, llvm::Constant* init_val);

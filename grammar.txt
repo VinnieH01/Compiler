@@ -32,3 +32,4 @@ primary         -> (NUMBER|IDENTIFIER)
                 -> TYPE COLON NUMBER
                 -> LPAR expr RPAR
                 -> IDENTIFIER LPAR (expr,)* RPAR #Function call
+                -> primary AS TYPE

@@ -168,6 +168,19 @@ class LoopTerminationNode:
         #This is so the bool is written as a correct json bool, should probably do this for all classes
         return str(json.dumps(node_dict))
 
+class CastNode:
+    def __init__(self, value, data_type):
+        self.value = value
+        self.data_type = data_type
+
+    def __repr__(self):
+        node_dict = {
+            "type": "Cast",
+            "value": self.value,
+            "data_type": self.data_type
+        }
+        return str(node_dict)
+
 #############################################
 # Parser
 #############################################
@@ -244,26 +257,39 @@ class Parser:
     
     def parse_primary(self):
         token = self.current_token
+        node = None
         if token.type == TokenType.LITERAL:
             self.advance()
-            return LiteralNode(token["value"], token["data_type"])
-        if token.type == TokenType.TYPE: #Explicitly typed literals
-            return self.parse_explicit_literal()
-        if token.type == TokenType.IDENTIFIER:
+            node = LiteralNode(token["value"], token["data_type"])
+        elif token.type == TokenType.TYPE: #Explicitly typed literals
+            node = self.parse_explicit_literal()
+        elif token.type == TokenType.IDENTIFIER:
             self.advance() #TODO: DO A PEEK HERE INSTEAD AND DONT SEND TOKEN TO FUNCTION CALL
             #If the next token is not a ( then it is a variable
             if self.current_token.type != TokenType.LPAR:
-                return VariableNode(token["name"])
+                node = VariableNode(token["name"])
             #If it is a ( then it is a function call: eg. "foo(" and we need to handle it as such
-            return self.parse_function_call(token)
-        if token.type == TokenType.LPAR:
+            else:
+                node = self.parse_function_call(token)
+        elif token.type == TokenType.LPAR:
             # Parenthesized expression take precedence and are therefore primary
             self.advance() #Advance past the (
             expr = self.parse_expression()
             if self.current_token.type != TokenType.RPAR:
                 raise Exception("Expected )")
             self.advance() #Advance past the )
-            return expr
+            node = expr
+        
+        #After we have the node we need to check if its being cast into a type
+        if self.current_token.type == TokenType.AS:
+            self.advance() #Advance past the AS
+            if self.current_token.type != TokenType.TYPE:
+                raise Exception("Expected type after 'as'")
+            data_type = self.current_token["data_type"]
+            self.advance() #Advance past the type
+            node = CastNode(node, data_type)      
+        if node is not None:
+            return node
         
         raise Exception(f"Expected primary but got {token}")
     

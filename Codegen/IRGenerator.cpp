@@ -62,7 +62,8 @@ Value* IRGenerator::visit_node(const json& data)
         { "Let", [this](const json& j) { return visit_let_node(j); } },
         { "If", [this](const json& j) { return visit_if_node(j); }},
         { "Loop", [this](const json& j) { return visit_loop_node(j); }},
-        { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }}
+        { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }},
+        { "Cast", [this](const json& j) { return visit_cast_node(j); }}
     };
 
     auto func = get_or_null(dispatch, (std::string)data["type"]);
@@ -482,6 +483,45 @@ Value* IRGenerator::visit_loop_termination_node(const json& data)
     BasicBlock* branch_to = data["break"] ? loop_break_block : loop_continue_block;
 
     return builder->CreateBr(branch_to);
+}
+
+Value* IRGenerator::visit_cast_node(const json& data)
+{
+    Value* before_cast = visit_node(data["value"]);
+    Type* type_before = before_cast->getType();
+    Type* type_after = type_names[data["data_type"]];
+
+    //If the types are the same we don't need to perform a cast
+    if (type_before == type_after) return before_cast;
+
+    if (type_before->isIntegerTy() && type_after->isIntegerTy()) //Cant do == on types here as different sized ints are different types
+    {
+        //If the new type is larger we want to performe a signed extension of the bits
+        if (type_after->getPrimitiveSizeInBits() > type_before->getPrimitiveSizeInBits()) 
+        {
+            return builder->CreateSExt(before_cast, type_after);
+        }
+        //Otherwise we truncate
+        return builder->CreateTrunc(before_cast, type_after);
+    } 
+
+    if (type_before->isFloatingPointTy() && type_after->isFloatingPointTy()) 
+    {
+        if (type_after->getPrimitiveSizeInBits() > type_before->getPrimitiveSizeInBits())
+        {
+            return builder->CreateFPExt(before_cast, type_after);
+        }
+        return builder->CreateFPTrunc(before_cast, type_after);
+    }
+
+    //If none of the above was true we either want a FP -> Int conversion or vice verse
+    if (type_before->isFloatingPointTy()) 
+    {
+        return builder->CreateFPToSI(before_cast, type_after);
+    }
+
+    //This is the last possible combination
+    return builder->CreateSIToFP(before_cast, type_after);
 }
 
 AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string& variable_name, Type* type) {

@@ -23,6 +23,7 @@ class TokenType:
     LOOP = "LOOP"
     TYPE = "TYPE"
     COLON = "COLON"
+    AS = "AS"
 
 class Token:
     def __init__(self, type, meta):
@@ -102,6 +103,7 @@ def tokenize(code):
         "loop": TokenType.LOOP,
         "continue": TokenType.CONTINUE,
         ":": TokenType.COLON,
+        "as": TokenType.AS,
     }
 
     types = {
