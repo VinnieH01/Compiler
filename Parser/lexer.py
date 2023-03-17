@@ -105,7 +105,13 @@ def tokenize(code):
     }
 
     types = {
+        "bool": "bool",
+        "i8": "i8",
+        "i16": "i16",
         "i32": "i32",
+        "i64": "i64",
+        "i128": "i128",
+        "f32": "f32",
         "f64": "f64",
     }
 
@@ -123,11 +129,11 @@ def tokenize(code):
             meta["name"] = raw_token
         elif raw_token.isdecimal():
             type = TokenType.LITERAL
-            meta["data_type"] = "i32"
+            meta["data_type"] = "integer"
             meta["value"] = int(raw_token)
         elif is_float(raw_token):
             type = TokenType.LITERAL
-            meta["data_type"] = "f64"
+            meta["data_type"] = "float"
             meta["value"] = float(raw_token)
         elif re.search(op_regex_0, raw_token) or re.search(op_regex_1, raw_token) != None:
             type = TokenType.OPERATOR

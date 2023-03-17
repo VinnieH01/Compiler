@@ -247,6 +247,8 @@ class Parser:
         if token.type == TokenType.LITERAL:
             self.advance()
             return LiteralNode(token["value"], token["data_type"])
+        if token.type == TokenType.TYPE: #Explicitly typed literals
+            return self.parse_explicit_literal()
         if token.type == TokenType.IDENTIFIER:
             self.advance() #TODO: DO A PEEK HERE INSTEAD AND DONT SEND TOKEN TO FUNCTION CALL
             #If the next token is not a ( then it is a variable
@@ -265,6 +267,19 @@ class Parser:
         
         raise Exception(f"Expected primary but got {token}")
     
+    def parse_explicit_literal(self):
+        data_type = self.current_token["data_type"]
+        self.advance() #Advance past the type
+        if self.current_token.type != TokenType.COLON:
+            raise Exception(f"Expected : but got {self.current_token}")
+        self.advance() #Advance past the :
+        if self.current_token.type != TokenType.LITERAL:
+            raise Exception(f"Expected literal but got {self.current_token}")
+        #TODO: Check that the literal is of the correct type (i.e if literal datatype is "float" then explicit type cant be i32 etc.)
+        literal = LiteralNode(self.current_token["value"], data_type)
+        self.advance() #Advance past the literal
+        return literal
+
     def parse_function_call(self, identifier_tok):
         self.advance() #Advance past the (
         args = []

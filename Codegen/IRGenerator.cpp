@@ -2,6 +2,7 @@
 #include <llvm/IR/Verifier.h>
 #include <functional>
 #include <stdexcept>
+#include <assert.h>
 
 using namespace nlohmann;
 using namespace llvm;
@@ -14,14 +15,36 @@ IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::uni
     function_pass_manager(fpm), 
     in_function(false),
     loop_break_block(nullptr), 
-    loop_continue_block(nullptr)
+    loop_continue_block(nullptr),
+    literal_type(nullptr)
 {
     type_names =
     {
         {"void", Type::getVoidTy(*context)},
+        {"bool", Type::getInt1Ty(*context)},
+        {"i8", Type::getInt8Ty(*context)},
+        {"i16", Type::getInt16Ty(*context)},
         {"i32", Type::getInt32Ty(*context)},
+        {"i64", Type::getInt64Ty(*context)},
+        {"i128", Type::getInt128Ty(*context)},
+        {"f32", Type::getFloatTy(*context)},
         {"f64", Type::getDoubleTy(*context)}
     };
+}
+
+template <typename K, typename V>
+V* get_or_null(const  std::map <K, V>& map, const K& key) {
+    typename std::map<K, V>::const_iterator it = map.find(key);
+    if (it == map.end())
+        return nullptr;
+    else 
+        return (V*) & it->second;
+}
+
+void error(const std::string message) 
+{
+    outs() << message;
+    exit(-1);
 }
 
 Value* IRGenerator::visit_node(const json& data)
@@ -39,30 +62,35 @@ Value* IRGenerator::visit_node(const json& data)
         { "Let", [this](const json& j) { return visit_let_node(j); } },
         { "If", [this](const json& j) { return visit_if_node(j); }},
         { "Loop", [this](const json& j) { return visit_loop_node(j); }},
-        { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }},
+        { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }}
     };
 
-    std::function<Value* (const json&)> func = nullptr;
-    try { func = dispatch.at((data["type"])); }
-    catch (std::exception e) { outs() << "Unknown node type in AST: " + (std::string)data["type"]; }
-
-    return func(data);
+    auto func = get_or_null(dispatch, (std::string)data["type"]);
+    if (func) 
+        return (*func)(data);
+    
+    error("Unknown node type in AST: " + (std::string)data["type"]);
 }
 
 Value* IRGenerator::visit_literal_node(const json& data)
 {
-    if (data["data_type"] == "i32") 
+    static std::map<std::string, std::function<Value* (const json&)>> type_to_const
     {
-        return ConstantInt::get(*context, APInt(32, (uint64_t)data["value"], true));
-    }
-    else if(data["data_type"] == "f64") 
-    {
-        return ConstantFP::get(*context, APFloat((double)data["value"]));
-    }
+        {"bool", [this](const json& j) { return ConstantInt::get(*context, APInt(1, (uint64_t)j["value"])); } },
+        {"i8", [this](const json& j) { return ConstantInt::get(*context, APInt(8, (uint64_t)j["value"])); }},
+        {"i16", [this](const json& j) { return ConstantInt::get(*context, APInt(16, (uint64_t)j["value"])); }},
+        {"i32", [this](const json& j) { return ConstantInt::get(*context, APInt(32, (uint64_t)j["value"])); }},
+        {"i64", [this](const json& j) { return ConstantInt::get(*context, APInt(64, (uint64_t)j["value"])); }},
+        {"i128", [this](const json& j) { return ConstantInt::get(*context, APInt(128, (uint64_t)j["value"])); }},
+        {"f32", [this](const json& j) { return ConstantFP::get(Type::getFloatTy(*context), (double)j["value"]); }},
+        {"f64", [this](const json& j) { return ConstantFP::get(Type::getDoubleTy(*context), (double)j["value"]); }}
+    };
 
-    outs() << "Literal with datatype not supported: " + (std::string)data["name"] + " " + (std::string)data["data_type"];
+    auto func = get_or_null(type_to_const, (std::string)data["data_type"]);
+    if (func)
+        return (*func)(data);
 
-    return nullptr;
+    error("Cannot infer datatype of literal");
 }
 
 Value* IRGenerator::visit_variable_node(const json& data)
@@ -78,7 +106,7 @@ Value* IRGenerator::visit_variable_node(const json& data)
     }
 
     if (!named_values.count(var_name)) 
-        outs() << ("Variable does not exist: " + (std::string)var_name);
+        error("Variable does not exist: " + (std::string)var_name);
 
     AllocaInst* A = named_values[var_name];
     return builder->CreateLoad(A->getAllocatedType(), A, std::string(data["name"]));
@@ -90,10 +118,7 @@ Value* IRGenerator::visit_let_node(const json& data)
     Type* type = type_names.at(data["data_type"]);
 
     if (type != value->getType())
-    {
-        outs() << "Incompatible types in let assignment: " + (std::string)data["name"];
-        return nullptr;
-    }
+        error("Incompatible types in let assignment: " + (std::string)data["name"]);
 
     if (!in_function)
     {
@@ -111,7 +136,7 @@ Value* IRGenerator::visit_let_node(const json& data)
         std::string var_name = data["name"];
 
         if (named_values.count(var_name))
-            outs() << ("Cannot redeclare variable: " + (std::string)var_name);
+            error("Cannot redeclare variable: " + (std::string)var_name);
 
         named_values[data["name"]] = alloca_inst;
 
@@ -133,20 +158,15 @@ Value* IRGenerator::visit_binary_node(const json& data)
         if (g_var)
         {
             if (val->getType() != g_var->getValueType()) 
-            {
-                outs() << "Incompatible types in assignment: " + (std::string)data["left"]["name"];
-                return nullptr;
-            }
+                error("Incompatible types in assignment: " + (std::string)data["left"]["name"]);
+
             return builder->CreateStore(val, g_var);
         }
 
         AllocaInst* variable = named_values[data["left"]["name"]];
 
         if (val->getType() != variable->getAllocatedType())
-        {
-            outs() << "Incompatible types in assignment: " + (std::string)data["left"]["name"];
-            return nullptr;
-        }
+            error("Incompatible types in assignment: " + (std::string)data["left"]["name"]);
 
         return builder->CreateStore(val, variable);
     }
@@ -157,81 +177,82 @@ Value* IRGenerator::visit_binary_node(const json& data)
     Type* type = lhs->getType();
 
     if(type != rhs->getType())
-        outs() << "Incompatible types in binary operator";
+        error("Incompatible types in binary operator");
 
-    if (type->isDoubleTy())
+    static std::map<std::string, std::function<Value* (Value*, Value*)>> integer_operations
     {
-        if (operation == "+")
-        {
-            return builder->CreateFAdd(lhs, rhs, "add");
-        }
-        if (operation == "-")
-        {
-            return builder->CreateFSub(lhs, rhs, "sub");
-        }
-        if (operation == "*")
-        {
-            return builder->CreateFMul(lhs, rhs, "mul");
-        }
-        if (operation == "<" || operation == ">" || operation == "=")
-        {
-            if (operation == "<")
-                return builder->CreateFCmpULT(lhs, rhs, "cmplt");
-            else if (operation == ">")
-                return builder->CreateFCmpUGT(lhs, rhs, "cmpgt");
-            else if (operation == "=")
-                return builder->CreateFCmpUEQ(lhs, rhs, "cmpeq");
-        }
+        {"+", [this](Value* l, Value* r) { return builder->CreateAdd(l, r); }},
+        {"-", [this](Value* l, Value* r) { return builder->CreateSub(l, r); }},
+        {"*", [this](Value* l, Value* r) { return builder->CreateMul(l, r); }},
+        {"<", [this](Value* l, Value* r) { return builder->CreateICmpSLT(l, r); }},
+        {">", [this](Value* l, Value* r) { return builder->CreateICmpSGT(l, r); }},
+        {"=", [this](Value* l, Value* r) { return builder->CreateICmpEQ(l, r); }}
+    };
 
-        outs() << ("Unknown operator in AST " + operation);
-    }
-    else if (type->isIntegerTy())
+    static std::map<std::string, std::function<Value* (Value*, Value*)>> float_operations
     {
-        if (operation == "+")
-        {
-            return builder->CreateAdd(lhs, rhs, "add");
-        }
-        if (operation == "-")
-        {
-            return builder->CreateSub(lhs, rhs, "sub");
-        }
-        if (operation == "*")
-        {
-            return builder->CreateMul(lhs, rhs, "mul");
-        }
-        if (operation == "<" || operation == ">" || operation == "=")
-        {
-            if (operation == "<")
-                return builder->CreateICmpULT(lhs, rhs, "cmplt");
-            else if (operation == ">")
-                return builder->CreateICmpUGT(lhs, rhs, "cmpgt");
-            else if (operation == "=")
-                return builder->CreateICmpEQ(lhs, rhs, "cmpeq");
-        }
+        {"+", [this](Value* l, Value* r) { return builder->CreateFAdd(l, r); }},
+        {"-", [this](Value* l, Value* r) { return builder->CreateFSub(l, r); }},
+        {"*", [this](Value* l, Value* r) { return builder->CreateFMul(l, r); }},
+        {"<", [this](Value* l, Value* r) { return builder->CreateFCmpULT(l, r); }},
+        {">", [this](Value* l, Value* r) { return builder->CreateFCmpUGT(l, r); }},
+        {"=", [this](Value* l, Value* r) { return builder->CreateFCmpUEQ(l, r); }}
+    };
 
-        outs() << ("Unknown operator in AST " + operation);
+    static std::map<Type*, std::map<std::string, std::function<Value* (Value*, Value*)>>> type_operation
+    {
+        {Type::getInt1Ty(*context), integer_operations},
+        {Type::getInt8Ty(*context), integer_operations},
+        {Type::getInt16Ty(*context), integer_operations},
+        {Type::getInt32Ty(*context), integer_operations},
+        {Type::getInt64Ty(*context), integer_operations},
+        {Type::getInt128Ty(*context), integer_operations},
+        {Type::getFloatTy(*context), float_operations},
+        {Type::getDoubleTy(*context), float_operations}
+    };
+
+    auto operations = get_or_null(type_operation, type);
+    if (operations)
+    {
+        auto builder_fn = get_or_null(*operations, operation);
+        if (builder_fn)
+            return (*builder_fn)(lhs, rhs);
     }
 
-    outs() << "Cannot perform binary operator on type";
+    error("This binary operator cannot be applied to the supplied values: " + operation);
 }
 
 Value* IRGenerator::visit_unary_node(const json& data)
 {
     std::string operation = data["operator"];
-
-    Value* zero = ConstantFP::get(*context, APFloat(0.0));
     Value* operand = visit_node(data["operand"]);
 
-    if (operation == "+")
+    Type* type = operand->getType();
+
+    //TODO: For now only i32 and f64 support unary operators.
+    static std::map<Type*, std::map<std::string, std::function<Value* (Value*)>>> type_operation
     {
-        return builder->CreateFAdd(zero, operand, "addtmp");
-    }
-    if (operation == "-")
+        {Type::getInt32Ty(*context),
+        {
+            {"+", [this](Value* o) { return builder->CreateAdd(ConstantInt::get(*context, APInt(32, 0, true)), o); }},
+            {"-", [this](Value* o) { return builder->CreateSub(ConstantInt::get(*context, APInt(32, 0, true)), o); }},
+        }},
+        {Type::getDoubleTy(*context),
+        {
+            {"+", [this](Value* o) { return builder->CreateFAdd(ConstantFP::get(*context, APFloat(0.0)), o); }},
+            {"-", [this](Value* o) { return builder->CreateFSub(ConstantFP::get(*context, APFloat(0.0)), o); }},
+        }}
+    };
+
+    auto operations = get_or_null(type_operation, type);
+    if (operations)
     {
-        return builder->CreateFSub(zero, operand, "subtmp");
+        auto builder_fn = get_or_null(*operations, operation);
+        if (builder_fn)
+            return (*builder_fn)(operand);
     }
 
-    outs() << ("Unknown operator in AST " + operation);
+    error("This unary operator cannot be applied to the supplied value: " + operation);
 }
 
 Value* IRGenerator::visit_return_node(const json& data)
@@ -315,9 +336,8 @@ Value* IRGenerator::visit_function_node(const json& data)
         builder->CreateRetVoid();
     }
 
-    bool fail = verifyFunction(*function, &outs());
-
-    if (fail) outs() << ("Function verification failed" + function->getName());
+    if (verifyFunction(*function, &outs())) 
+        error("Function verification failed: " + function->getName().str());
 
     //Optimize function
     function_pass_manager->run(*function);
@@ -332,11 +352,8 @@ Value* IRGenerator::visit_call_node(const json& data)
     // Look up the name in the global module table.
     Function* callee = module->getFunction((std::string)data["callee"]);
 
-    if (!callee) 
-    {
-        outs() << ("Function does not exist: " + (std::string)data["callee"]);
-        return nullptr;
-    }
+    if (!callee)
+        error("Function does not exist: " + (std::string)data["callee"]);
 
     std::vector<json> args_data = data["args"];
 
@@ -357,7 +374,7 @@ Value* IRGenerator::visit_if_node(const json& data)
     Value* condition = visit_node(data["condition"]);
 
     if (!condition->getType()->isIntegerTy(1))
-        outs() << "If statement requires bool type";
+        error("If statement requires bool type");
 
     Function* function = builder->GetInsertBlock()->getParent();
 
@@ -460,7 +477,7 @@ Value* IRGenerator::visit_loop_node(const json& data)
 Value* IRGenerator::visit_loop_termination_node(const json& data)
 {
     if (!loop_break_block) //Dont need to check continue as well, if one is set the other should be as well.
-        outs() << ("Cannot break/continue outside loop");
+        error("Cannot break/continue outside loop");
 
     BasicBlock* branch_to = data["break"] ? loop_break_block : loop_continue_block;
 
@@ -468,7 +485,7 @@ Value* IRGenerator::visit_loop_termination_node(const json& data)
 }
 
 AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string& variable_name, Type* type) {
-    static llvm::IRBuilder<> entry_builder(&func->getEntryBlock(), func->getEntryBlock().begin());
+    static IRBuilder<> entry_builder(&func->getEntryBlock(), func->getEntryBlock().begin());
 
     entry_builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
     return entry_builder.CreateAlloca(type, nullptr, variable_name);
@@ -477,7 +494,7 @@ AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string&
 GlobalVariable* IRGenerator::create_global_variable(const std::string& variable_name, Type* type, Constant* init_val)
 {
     if(module->getNamedGlobal(variable_name)) 
-        outs() << ("Cannot redefine global variable: " + variable_name);
+        error("Cannot redefine global variable: " + variable_name);
 
     module->getOrInsertGlobal(variable_name, type);
     GlobalVariable* global_variable = module->getNamedGlobal(variable_name);

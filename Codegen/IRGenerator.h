@@ -23,6 +23,10 @@ private:
     //This is used to convert parser type strings to actual llvm types
     std::map<std::string, llvm::Type*> type_names;
 
+    //This is used for generating code for literals. For example "let i32: x = 10" Needs to handle "10" as an i32 and not an i8, i16.. etc.
+    //nullptr will treat is as float -> f32, integer -> i32
+    llvm::Type* literal_type;
+
     //This is used to keep track of where a "break" or "continue" keyword should branch to.
     llvm::BasicBlock* loop_break_block;
     llvm::BasicBlock* loop_continue_block;
