@@ -4,8 +4,12 @@
 #include <stdexcept>
 #include <assert.h>
 
+#include "GeneratorHelper.h"
+#include "Common.h"
+
 using namespace nlohmann;
 using namespace llvm;
+using namespace GeneratorHelper;
 
 IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::unique_ptr<Module>& mdl, const std::unique_ptr<IRBuilder<>>& bldr, const std::unique_ptr<legacy::FunctionPassManager>& fpm)
     : 
@@ -30,21 +34,6 @@ IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::uni
         {"f32", Type::getFloatTy(*context)},
         {"f64", Type::getDoubleTy(*context)}
     };
-}
-
-template <typename K, typename V>
-V* get_or_null(const  std::map <K, V>& map, const K& key) {
-    typename std::map<K, V>::const_iterator it = map.find(key);
-    if (it == map.end())
-        return nullptr;
-    else 
-        return (V*) & it->second;
-}
-
-void error(const std::string message) 
-{
-    outs() << message;
-    exit(-1);
 }
 
 Value* IRGenerator::visit_node(const json& data)
@@ -96,80 +85,59 @@ Value* IRGenerator::visit_literal_node(const json& data)
 
 Value* IRGenerator::visit_variable_node(const json& data)
 {
-    std::string var_name = data["name"];
+    Value* variable = get_variable(module.get(), named_values, data["name"]);
 
-    GlobalVariable* g_var = module->getNamedGlobal((std::string)data["name"]);
+    Type* type = isa<GlobalVariable>(variable)
+        ? cast<GlobalVariable>(variable)->getValueType()
+        : cast<AllocaInst>(variable)->getAllocatedType();
 
-    //Global variable takes precedence over local
-    if(g_var) 
-    {
-        return builder->CreateLoad(g_var->getValueType(), g_var, std::string(data["name"]));
-    }
-
-    if (!named_values.count(var_name)) 
-        error("Variable does not exist: " + (std::string)var_name);
-
-    AllocaInst* A = named_values[var_name];
-    return builder->CreateLoad(A->getAllocatedType(), A, std::string(data["name"]));
+    return builder->CreateLoad(type, variable);
 }
 
 Value* IRGenerator::visit_let_node(const json& data)
 {
     Value* value = visit_node(data["value"]);
     Type* type = type_names.at(data["data_type"]);
+    std::string variable_name = data["name"];
 
     if (type != value->getType())
-        error("Incompatible types in let assignment: " + (std::string)data["name"]);
+        error("Incompatible types in let assignment: " + variable_name);
 
+    //If the builder is outside of a function we want to create a global variable
     if (!in_function)
     {
-        //We are outside of a function and should declare variable globally.
-
-        //TODO: Cast to Constant* is scary.. for now its fine because the parser disallows anything else
-        return create_global_variable(data["name"], type, (Constant*)value);
+        if (!isa<Constant>(value)) error("Can only initialize global variable with a constant");
+        return create_global_variable(module.get(), data["name"], type, cast<Constant>(value));
     }
-    else
-    {
-        Function* function = builder->GetInsertBlock()->getParent();
 
-        AllocaInst* alloca_inst = create_alloca_at_top(function, data["name"], type);
+    if (named_values.count(variable_name))
+        error("Cannot redeclare variable: " + variable_name);
 
-        std::string var_name = data["name"];
+    Function* function = builder->GetInsertBlock()->getParent();
 
-        if (named_values.count(var_name))
-            error("Cannot redeclare variable: " + (std::string)var_name);
+    AllocaInst* alloca_inst = create_alloca_at_top(function, data["name"], type);
+    named_values[data["name"]] = alloca_inst;
 
-        named_values[data["name"]] = alloca_inst;
-
-        return builder->CreateStore(value, alloca_inst);
-    }
+    return builder->CreateStore(value, alloca_inst);
 }
 
 Value* IRGenerator::visit_binary_node(const json& data)
 {
     std::string operation = data["operator"];
 
+    //This is a special case as we don't want to evaluate the lhs
     if (operation == "<-")
     {
-        Value* val = visit_node(data["right"]);
+        std::string variable_name = data["left"]["name"];
+        Value* variable_value = visit_node(data["right"]);
+        Value* variable = get_variable(module.get(), named_values, variable_name);
 
-        GlobalVariable* g_var = module->getNamedGlobal((std::string)data["left"]["name"]);
+        if (variable_value->getType() != (isa<GlobalVariable>(variable) 
+            ? cast<GlobalVariable>(variable)->getValueType() 
+            : cast<AllocaInst>(variable)->getAllocatedType())) 
+            error("Incompatible types in assignment: " + variable_name);
 
-        //Global variable takes precedence over local
-        if (g_var)
-        {
-            if (val->getType() != g_var->getValueType()) 
-                error("Incompatible types in assignment: " + (std::string)data["left"]["name"]);
-
-            return builder->CreateStore(val, g_var);
-        }
-
-        AllocaInst* variable = named_values[data["left"]["name"]];
-
-        if (val->getType() != variable->getAllocatedType())
-            error("Incompatible types in assignment: " + (std::string)data["left"]["name"]);
-
-        return builder->CreateStore(val, variable);
+        return builder->CreateStore(variable_value, variable);
     }
 
     Value* lhs = visit_node(data["left"]);
@@ -180,47 +148,8 @@ Value* IRGenerator::visit_binary_node(const json& data)
     if(type != rhs->getType())
         error("Incompatible types in binary operator");
 
-    static std::map<std::string, std::function<Value* (Value*, Value*)>> integer_operations
-    {
-        {"+", [this](Value* l, Value* r) { return builder->CreateAdd(l, r); }},
-        {"-", [this](Value* l, Value* r) { return builder->CreateSub(l, r); }},
-        {"*", [this](Value* l, Value* r) { return builder->CreateMul(l, r); }},
-        {"<", [this](Value* l, Value* r) { return builder->CreateICmpSLT(l, r); }},
-        {">", [this](Value* l, Value* r) { return builder->CreateICmpSGT(l, r); }},
-        {"=", [this](Value* l, Value* r) { return builder->CreateICmpEQ(l, r); }}
-    };
-
-    static std::map<std::string, std::function<Value* (Value*, Value*)>> float_operations
-    {
-        {"+", [this](Value* l, Value* r) { return builder->CreateFAdd(l, r); }},
-        {"-", [this](Value* l, Value* r) { return builder->CreateFSub(l, r); }},
-        {"*", [this](Value* l, Value* r) { return builder->CreateFMul(l, r); }},
-        {"<", [this](Value* l, Value* r) { return builder->CreateFCmpULT(l, r); }},
-        {">", [this](Value* l, Value* r) { return builder->CreateFCmpUGT(l, r); }},
-        {"=", [this](Value* l, Value* r) { return builder->CreateFCmpUEQ(l, r); }}
-    };
-
-    static std::map<Type*, std::map<std::string, std::function<Value* (Value*, Value*)>>> type_operation
-    {
-        {Type::getInt1Ty(*context), integer_operations},
-        {Type::getInt8Ty(*context), integer_operations},
-        {Type::getInt16Ty(*context), integer_operations},
-        {Type::getInt32Ty(*context), integer_operations},
-        {Type::getInt64Ty(*context), integer_operations},
-        {Type::getInt128Ty(*context), integer_operations},
-        {Type::getFloatTy(*context), float_operations},
-        {Type::getDoubleTy(*context), float_operations}
-    };
-
-    auto operations = get_or_null(type_operation, type);
-    if (operations)
-    {
-        auto builder_fn = get_or_null(*operations, operation);
-        if (builder_fn)
-            return (*builder_fn)(lhs, rhs);
-    }
-
-    error("This binary operator cannot be applied to the supplied values: " + operation);
+    auto create_binary_operation = get_binary_operation_fn(context.get(), type, operation);
+    return create_binary_operation(builder.get(), lhs, rhs);
 }
 
 Value* IRGenerator::visit_unary_node(const json& data)
@@ -258,8 +187,8 @@ Value* IRGenerator::visit_unary_node(const json& data)
 
 Value* IRGenerator::visit_return_node(const json& data)
 {
-    Value* expr_val = visit_node(data["value"]);
-    return builder->CreateRet(expr_val);
+    Value* ret_val = visit_node(data["value"]);
+    return builder->CreateRet(ret_val);
 }
 
 Function* IRGenerator::visit_prototype_node(const json& data)
@@ -277,7 +206,6 @@ Function* IRGenerator::visit_prototype_node(const json& data)
     }
 
     Type* return_type = type_names.at(data["ret_type"]);
-
     FunctionType* func_type = FunctionType::get(return_type, arg_types, false);
 
     Function* function = Function::Create(func_type, Function::ExternalLinkage, name, module.get());
@@ -350,11 +278,13 @@ Value* IRGenerator::visit_function_node(const json& data)
 
 Value* IRGenerator::visit_call_node(const json& data)
 {
+    std::string callee_name = data["callee"];
+
     // Look up the name in the global module table.
-    Function* callee = module->getFunction((std::string)data["callee"]);
+    Function* callee = module->getFunction(callee_name);
 
     if (!callee)
-        error("Function does not exist: " + (std::string)data["callee"]);
+        error("Function does not exist: " + callee_name);
 
     std::vector<json> args_data = data["args"];
 
@@ -365,9 +295,7 @@ Value* IRGenerator::visit_call_node(const json& data)
         arg_values.push_back(visit_node(args_data[i]));
     }
 
-    //Cannot give void type a name 
-    if (callee->getReturnType()->isVoidTy()) return builder->CreateCall(callee, arg_values);
-    return builder->CreateCall(callee, arg_values, "fnret");
+    return builder->CreateCall(callee, arg_values);
 }
 
 Value* IRGenerator::visit_if_node(const json& data)
@@ -442,7 +370,7 @@ Value* IRGenerator::visit_loop_node(const json& data)
     for (const json& data : body_data)
     {
         //We have to set this in the loop since an inner loop node could change it.
-        //Also NOTE: "loop_continue_block" refers to the continue keyword. Not the continuation block
+        //Also note: "loop_continue_block" refers to the continue keyword. Not the continuation block
         loop_break_block = continuation_block;
         loop_continue_block = loop_block;
 
@@ -494,51 +422,19 @@ Value* IRGenerator::visit_cast_node(const json& data)
     //If the types are the same we don't need to perform a cast
     if (type_before == type_after) return before_cast;
 
+    bool bit_extension = type_after->getPrimitiveSizeInBits() > type_before->getPrimitiveSizeInBits();
+
     if (type_before->isIntegerTy() && type_after->isIntegerTy()) //Cant do == on types here as different sized ints are different types
-    {
-        //If the new type is larger we want to performe a signed extension of the bits
-        if (type_after->getPrimitiveSizeInBits() > type_before->getPrimitiveSizeInBits()) 
-        {
-            return builder->CreateSExt(before_cast, type_after);
-        }
-        //Otherwise we truncate
-        return builder->CreateTrunc(before_cast, type_after);
-    } 
+        //If the new type is larger we want to performe a signed extension of the bits otherwise we truncate
+        return bit_extension ? builder->CreateSExt(before_cast, type_after)
+            : builder->CreateTrunc(before_cast, type_after);
 
     if (type_before->isFloatingPointTy() && type_after->isFloatingPointTy()) 
-    {
-        if (type_after->getPrimitiveSizeInBits() > type_before->getPrimitiveSizeInBits())
-        {
-            return builder->CreateFPExt(before_cast, type_after);
-        }
-        return builder->CreateFPTrunc(before_cast, type_after);
-    }
+        return bit_extension ? builder->CreateFPExt(before_cast, type_after)
+            : builder->CreateFPTrunc(before_cast, type_after);
 
     //If none of the above was true we either want a FP -> Int conversion or vice verse
-    if (type_before->isFloatingPointTy()) 
-    {
-        return builder->CreateFPToSI(before_cast, type_after);
-    }
-
-    //This is the last possible combination
-    return builder->CreateSIToFP(before_cast, type_after);
-}
-
-AllocaInst* IRGenerator::create_alloca_at_top(Function* func, const std::string& variable_name, Type* type) {
-    static IRBuilder<> entry_builder(&func->getEntryBlock(), func->getEntryBlock().begin());
-
-    entry_builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
-    return entry_builder.CreateAlloca(type, nullptr, variable_name);
-}
-
-GlobalVariable* IRGenerator::create_global_variable(const std::string& variable_name, Type* type, Constant* init_val)
-{
-    if(module->getNamedGlobal(variable_name)) 
-        error("Cannot redefine global variable: " + variable_name);
-
-    module->getOrInsertGlobal(variable_name, type);
-    GlobalVariable* global_variable = module->getNamedGlobal(variable_name);
-    global_variable->setLinkage(GlobalValue::ExternalLinkage);
-    global_variable->setInitializer(init_val);
-    return global_variable;
+    return type_before->isFloatingPointTy()
+        ? builder->CreateFPToSI(before_cast, type_after)
+        : builder->CreateSIToFP(before_cast, type_after);
 }

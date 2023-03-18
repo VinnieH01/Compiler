@@ -30,6 +30,7 @@ private:
     //This is used to keep track of where a "break" or "continue" keyword should branch to.
     llvm::BasicBlock* loop_break_block;
     llvm::BasicBlock* loop_continue_block;
+    bool in_function;
 
     llvm::Value* visit_literal_node(const nlohmann::json& data);
     llvm::Value* visit_variable_node(const nlohmann::json& data);
@@ -44,11 +45,6 @@ private:
     llvm::Value* visit_loop_node(const nlohmann::json& data);
     llvm::Value* visit_loop_termination_node(const nlohmann::json& data);
     llvm::Value* visit_cast_node(const nlohmann::json& data);
-
-    llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name, llvm::Type* type);
-    llvm::GlobalVariable* create_global_variable(const std::string& variable_name, llvm::Type* type, llvm::Constant* init_val);
-
-    bool in_function;
 public:
     IRGenerator(const std::unique_ptr<llvm::LLVMContext>&, const std::unique_ptr<llvm::Module>&, const std::unique_ptr<llvm::IRBuilder<>>&, const std::unique_ptr<llvm::legacy::FunctionPassManager>&);
     llvm::Value* visit_node(const nlohmann::json& data);
