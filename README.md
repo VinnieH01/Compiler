@@ -1,72 +1,73 @@
-# Unnecessarily complex fibonacci example
-## The following is an example showing some of the language's syntax. It asks the user for input "n" and prints n fibonacci numbers in order.
-### The `scan()` and `print(x)` functions are defined in an external library. They are wrappers for `scanf` and `printf`
+# Mandelbrot set example
+## The following is an example showing some of the language's syntax. It displays the mandelbrot set using ascii characters
+### The `printchar(i8)` function is defined in an external library `lib.c`. The code is a translation of the one found in the LLVM Kaleidoscope tutorial.
 
 ```rust
-dec actn print(x);
-dec scan();
+dec actn printchar(i8: char);
 
-fn fibrec(n, m, prt) 
+actn printdensity(i32: d)
 {
-    if (n > m) * prt
+    if d > i32: 8
     {
-        print(fibrec(n-1, m, 1));
-    };
-
-    if n < 2 
+        printchar(i8: 32);
+    } 
+    else if d > i32: 4
     {
-        ret 1;
+        printchar(i8: 46);
+    } 
+    else if d > i32: 2 
+    {
+        printchar(i8: 43);
+    }
+    else
+    {
+        printchar(i8: 42);
     };
-
-    ret fibrec(n-1, m, 0) + fibrec(n-2, m, 0);
 };
 
-actn fib(n) 
+fn mandleconverger(f64: real, f64: imag, i32: iters, f64: creal, f64: cimag) -> i32
 {
-    print(fibrec(n, 1, 1));
-};
-
-actn main()
-{
-    fib(scan());
-};
-```
-## Here's an example using loops.
-
-```rust
-dec actn print(x);
-dec scan();
-
-fn fib(n) 
-{
-    let a <- 1;
-    let b <- 1;
-    let c <- 0;
-
-    let i <- 3;
-    loop 
+    if iters > i32: 255 | (real * real + imag * imag > f64: 4)
     {
-        c <- a + b;
-        a <- b;
-        b <- c;
-
-        i <- i + 1;
-        if i > (n + 1) { break; };
+        ret iters;
     };
+    ret mandleconverger(real * real - imag * imag + creal, 
+                        f64: 2 * real * imag + cimag, iters + i32: 1, creal, cimag);
+};
 
-    ret b;
+fn mandleconverge(f64: real, f64: imag) -> i32
+{
+    ret mandleconverger(real, imag, i32: 0, real, imag);
+};
+
+actn mandelhelp(f64: xmin, f64: xmax, f64: xstep, f64: ymin, f64: ymax, f64: ystep)
+{
+    let f64: y <- ymin;
+    loop
+    {
+        let f64: x <- xmin;
+        loop
+        {
+            printdensity(mandleconverge(x, y));
+        
+            x <- x + xstep;
+            if !(x < xmax) {break;};
+        };
+        printchar(i8: 10);
+    
+        y <- y + ystep;
+        if !(y < ymax) {break;};
+    };
+};
+
+actn mandel(f64: realstart, f64: imagstart, f64: realmag, f64: imagmag) 
+{
+    mandelhelp(realstart, realstart + realmag * f64: 78, realmag, 
+               imagstart, imagstart + imagmag * f64: 40, imagmag);
 };
 
 actn main() 
 {
-    let max <- scan();	
-    print(1);
-    let i <- 2;
-    loop
-    {
-        print(fib(i));
-        i <- i + 1;
-        if i > max { break; };
-    };
+    mandel(-f64: 2.3, -f64: 1.3, f64: 0.05, f64: 0.07);
 };
 ```
