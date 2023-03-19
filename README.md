@@ -4,6 +4,7 @@
 
 ```rust
 dec actn printchar(i8: char);
+dec scanf64() -> f64;
 
 actn printdensity(i32: d)
 {
@@ -43,20 +44,16 @@ fn mandleconverge(f64: real, f64: imag) -> i32
 actn mandelhelp(f64: xmin, f64: xmax, f64: xstep, f64: ymin, f64: ymax, f64: ystep)
 {
     let f64: y <- ymin;
-    loop
+    while y < ymax
     {
         let f64: x <- xmin;
-        loop
+        while x < xmax
         {
             printdensity(mandleconverge(x, y));
-        
             x <- x + xstep;
-            if !(x < xmax) {break;};
         };
         printchar(i8: 10);
-    
         y <- y + ystep;
-        if !(y < ymax) {break;};
     };
 };
 
