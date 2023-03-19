@@ -55,9 +55,8 @@ Value* IRGenerator::visit_node(const json& data)
         { "Cast", [this](const json& j) { return visit_cast_node(j); }}
     };
 
-    auto func = get_or_null(dispatch, (std::string)data["type"]);
-    if (func) 
-        return (*func)(data);
+    if (auto func = dispatch.find(data["type"]); func != dispatch.end()) 
+        return func->second(data);
     
     error("Unknown node type in AST: " + (std::string)data["type"]);
 }
@@ -76,9 +75,8 @@ Value* IRGenerator::visit_literal_node(const json& data)
         {"f64", [this](const json& j) { return ConstantFP::get(Type::getDoubleTy(*context), (double)j["value"]); }}
     };
 
-    auto func = get_or_null(type_to_const, (std::string)data["data_type"]);
-    if (func)
-        return (*func)(data);
+    if (auto func = type_to_const.find(data["data_type"]); func != type_to_const.end()) 
+        return func->second(data);
 
     error("Cannot infer datatype of literal");
 }
@@ -102,7 +100,7 @@ Value* IRGenerator::visit_let_node(const json& data)
 
     if (type != value->getType())
         error("Incompatible types in let assignment: " + variable_name);
-
+    
     //If the builder is outside of a function we want to create a global variable
     if (!in_function)
     {
@@ -174,12 +172,10 @@ Value* IRGenerator::visit_unary_node(const json& data)
         }}
     };
 
-    auto operations = get_or_null(type_operation, type);
-    if (operations)
+    if (auto operations = type_operation.find(type); operations != type_operation.end())
     {
-        auto builder_fn = get_or_null(*operations, operation);
-        if (builder_fn)
-            return (*builder_fn)(operand);
+        if (auto builder_fn = operations->second.find(operation); builder_fn != operations->second.end())
+            return builder_fn->second(operand);
     }
 
     error("This unary operator cannot be applied to the supplied value: " + operation);
@@ -265,6 +261,7 @@ Value* IRGenerator::visit_function_node(const json& data)
         builder->CreateRetVoid();
     }
 
+    //verifyFunction returns true if it fails
     if (verifyFunction(*function, &outs())) 
         error("Function verification failed: " + function->getName().str());
 
@@ -323,22 +320,15 @@ Value* IRGenerator::visit_if_node(const json& data)
         bool terminate_in_block = false;
         for (const json& data : block_data)
         {
-            //If we find a return or break we want to break out of this loop since nothing can run after the return/break anyway.
-            //Without this the verifier would complain and the function would be invalid.
+            //If we find a return or break we want to stop generating this block since nothing can run after the return/break anyway.
+            //Without this the verifier would complain and the function would be invalid because there can only be one termination point.
             visit_node(data);
             if (data["type"] == "Return" || data["type"] == "LoopTermination")
-            {
-                terminate_in_block = true;
-                break;
-            }
+                return;
         }
 
         //If we didn't terminate in the above loop we have to do so at the end of the block
-        if (!terminate_in_block)
-        {
-            //Branch to continue after then is done
-            builder->CreateBr(continuation_block);
-        }
+        builder->CreateBr(continuation_block);
     };
 
     generate_block(then_block, data["then"]);

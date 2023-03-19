@@ -5,48 +5,50 @@ using namespace llvm;
 
 namespace GeneratorHelper
 {
-    AllocaInst* create_alloca_at_top(Function* func, const std::string& variable_name, Type* type) {
-        static IRBuilder<> entry_builder(&func->getEntryBlock(), func->getEntryBlock().begin());
+    AllocaInst* create_alloca_at_top(Function* func, const std::string& variable_name, Type* type) 
+    {
+        static IRBuilder<> entry_builder(&func->getEntryBlock(), func->getEntryBlock().getFirstInsertionPt());
 
-        entry_builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
+        entry_builder.SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().getFirstInsertionPt());
         return entry_builder.CreateAlloca(type, nullptr, variable_name);
     }
 
     GlobalVariable* create_global_variable(Module* module, const std::string& variable_name, Type* type, Constant* init_val)
     {
-        if (module->getNamedGlobal(variable_name))
-            error("Cannot redefine global variable: " + variable_name);
+        //This includes other types of values not just global variables (such as function names).
+        if (module->getNamedValue(variable_name))
+            error("Cannot redefine symbol: " + variable_name);
 
-        module->getOrInsertGlobal(variable_name, type);
-        GlobalVariable* global_variable = module->getNamedGlobal(variable_name);
-        global_variable->setLinkage(GlobalValue::ExternalLinkage);
-        global_variable->setInitializer(init_val);
-        return global_variable;
+        return new GlobalVariable(*module, type, false, GlobalValue::ExternalLinkage, init_val, variable_name);
     }
 
-    std::function<Value* (IRBuilder<>*, Value*, Value*)> get_binary_operation_fn(LLVMContext* context, Type* type, const std::string& operation)
+    binary_operation_fn get_binary_operation_fn(LLVMContext* context, Type* type, const std::string& operation)
     {
-        static std::map<std::string, std::function<Value* (IRBuilder<>*, Value*, Value*)>> integer_operations
+        #define binary_operation_lambda(operation) [](IRBuilder<>* builder, Value* lhs, Value* rhs) { return builder->operation(lhs, rhs); }
+
+        static const std::map<std::string, binary_operation_fn>& integer_operations
         {
-            {"+", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateAdd(l, r); }},
-            {"-", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateSub(l, r); }},
-            {"*", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateMul(l, r); }},
-            {"<", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateICmpSLT(l, r); }},
-            {">", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateICmpSGT(l, r); }},
-            {"=", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateICmpEQ(l, r); }}
+            {"+", binary_operation_lambda(CreateAdd)},
+            {"-", binary_operation_lambda(CreateSub)},
+            {"*", binary_operation_lambda(CreateMul)},
+            {"<", binary_operation_lambda(CreateICmpSLT)},
+            {">", binary_operation_lambda(CreateICmpSGT)},
+            {"=", binary_operation_lambda(CreateICmpEQ)}
         };
 
-        static std::map<std::string, std::function<Value* (IRBuilder<>*, Value*, Value*)>> float_operations
-        {
-            {"+", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateFAdd(l, r); }},
-            {"-", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateFSub(l, r); }},
-            {"*", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateFMul(l, r); }},
-            {"<", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateFCmpULT(l, r); }},
-            {">", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateFCmpUGT(l, r); }},
-            {"=", [](IRBuilder<>* builder, Value* l, Value* r) { return builder->CreateFCmpUEQ(l, r); }}
+        static const std::map<std::string, binary_operation_fn>& float_operations
+        {    
+            {"+", binary_operation_lambda(CreateFAdd)},
+            {"-", binary_operation_lambda(CreateFSub)},
+            {"*", binary_operation_lambda(CreateFMul)},
+            {"<", binary_operation_lambda(CreateFCmpULT)},
+            {">", binary_operation_lambda(CreateFCmpUGT)},
+            {"=", binary_operation_lambda(CreateFCmpUEQ)}
         };
 
-        static std::map<Type*, std::map<std::string, std::function<Value* (IRBuilder<>*, Value*, Value*)>>> type_operation
+        #undef binary_operation_lambda    
+
+        static const std::map<Type*, std::map<std::string, binary_operation_fn>>& type_operation
         {
             {Type::getInt1Ty(*context), integer_operations},
             {Type::getInt8Ty(*context), integer_operations},
@@ -58,12 +60,10 @@ namespace GeneratorHelper
             {Type::getDoubleTy(*context), float_operations}
         };
 
-        auto operations = get_or_null(type_operation, type);
-        if (operations)
+        if (auto operations = type_operation.find(type); operations != type_operation.end())
         {
-            auto builder_fn = get_or_null(*operations, operation);
-            if (builder_fn)
-                return *builder_fn;
+            if (auto builder_fn = operations->second.find(operation); builder_fn != operations->second.end())
+                return builder_fn->second;
         }
 
         error("This binary operator cannot be applied to the supplied values: " + operation);
@@ -72,11 +72,12 @@ namespace GeneratorHelper
     Value* get_variable(llvm::Module* module, std::map<std::string, llvm::AllocaInst*>& local_variables, const std::string& variable_name)
     {
         //Local variable takes precedence
-        Value* variable = module->getNamedValue(variable_name);
-        auto** local_var = get_or_null(local_variables, variable_name);
-        if (local_var) variable = *local_var;
+        if (auto local_var = local_variables.find(variable_name); local_var != local_variables.end())
+            return local_var->second;
 
-        if(!variable) error("Variable does not exist: " + variable_name);
-        return variable;
+        if (auto global_var = module->getNamedGlobal(variable_name))
+            return global_var;
+
+        error("Variable does not exist: " + variable_name);
     }
 }

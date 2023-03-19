@@ -14,11 +14,8 @@ namespace GeneratorHelper
     llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name, llvm::Type* type);
     llvm::GlobalVariable* create_global_variable(llvm::Module* module, const std::string& variable_name, llvm::Type* type, llvm::Constant* init_val);
 
-    std::function<llvm::Value* (llvm::IRBuilder<>*, llvm::Value*, llvm::Value*)> get_binary_operation_fn(llvm::LLVMContext* context, 
-        llvm::Type* type, const std::string& operation);
-
-    /*llvm::Value* create_variable_assignment(llvm::Module* module, std::map<std::string, llvm::AllocaInst*>& local_variables,
-        llvm::IRBuilder<>* builder, const std::string& variable_name, llvm::Value* value);*/
+    using binary_operation_fn = std::function<llvm::Value* (llvm::IRBuilder<>*, llvm::Value*, llvm::Value*)>;
+    binary_operation_fn get_binary_operation_fn(llvm::LLVMContext* context, llvm::Type* type, const std::string& operation);
 
     llvm::Value* get_variable(llvm::Module* module, std::map<std::string, llvm::AllocaInst*>& local_variables, const std::string& variable_name); 
 }
