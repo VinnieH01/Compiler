@@ -4,7 +4,6 @@
 
 ```rust
 dec actn printchar(i8: char);
-dec scanf64() -> f64;
 
 actn printdensity(i32: d)
 {
