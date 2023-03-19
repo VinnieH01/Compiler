@@ -223,7 +223,11 @@ class Parser:
         return statements
 
     def parse_expression(self):
-        return self.parse_comparison()
+        return self.parse_logic()
+    
+    #Binary boolean logic &, | etc.
+    def parse_logic(self):
+        return self.parse_binary_expression(self.parse_comparison, ["&", "|"])
     
     def parse_comparison(self):
         return self.parse_binary_expression(self.parse_term, ["<", ">", "="])
@@ -249,7 +253,7 @@ class Parser:
     
     def parse_unary(self):
         token = self.current_token # Get the current token which should be either a valid unary operator or a primary
-        if token.type == TokenType.OPERATOR and token["operator"] in ["+", "-"]:
+        if token.type == TokenType.OPERATOR and token["operator"] in ["+", "-", "!"]:
             self.advance()
             #If it was a unary operator then parse the next unary which is the operand 
             return UnaryNode(token["operator"], self.parse_unary())

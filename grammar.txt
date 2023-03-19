@@ -17,7 +17,9 @@ termination     -> RET expr
 assignment      -> IDENTIFIER ("<-") expr
                 -> LET TYPE COLON IDENTIFIER ("<-") expr
 
-expr            -> comparison
+expr            -> logic
+
+logic           -> comparison (("&"|"|") comparison)*
 
 comparison      -> term ((">"|"<"|"=") term)*
 
@@ -25,7 +27,7 @@ term            -> factor (("+"|"-") factor)*
 
 factor          -> unary ("*" unary)*
 
-unary           -> ("+"|"-") unary 
+unary           -> ("+"|"-"|"!") unary 
                 -> primary
 
 primary         -> (NUMBER|IDENTIFIER) 

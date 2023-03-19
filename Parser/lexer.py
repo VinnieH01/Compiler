@@ -60,7 +60,7 @@ def tokenize(code):
 
     operators_0 = ["\<\-", "\-\>"] #Here we add multi char operators which contain other operators eg. == has =. 
                          #This is to prevent the regex from splitting on the = in ==.
-    operators_1 = ["\+", "\-", "\*", "\(", "\)", "\;", "\,", "\{", "\}", "\=", "\>", "\<", ":"] 
+    operators_1 = ["\+", "\-", "\*", "\(", "\)", "\;", "\,", "\{", "\}", "\=", "\>", "\<", ":", "\!", "\&", "\|"] 
 
     op_regex_0 = ""
     for op in operators_0:
@@ -126,6 +126,10 @@ def tokenize(code):
         elif raw_token in types:
             type = TokenType.TYPE
             meta["data_type"] = types[raw_token]
+        elif raw_token == "true" or raw_token == "false":
+            type = TokenType.LITERAL
+            meta["data_type"] = "bool"
+            meta["value"] = int(raw_token == "true")
         elif raw_token[0].isalpha() and raw_token.isalnum():
             type = TokenType.IDENTIFIER
             meta["name"] = raw_token
