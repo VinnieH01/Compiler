@@ -9,6 +9,7 @@ if_statement    -> IF expr LBRACE (expr|termination|assignment|if_statement|loop
                 -> if_statement ELSE IF expr LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)* RBRACE
 
 loop            -> LOOP LBRACE (expr)* RBRACE
+                -> WHILE expr LBRACE (expr)* RBRACE
 
 termination     -> RET expr
                 -> BREAK

@@ -46,11 +46,17 @@ namespace GeneratorHelper
             {"=", binary_operation_lambda(CreateFCmpUEQ)}
         };
 
+        static const std::map<std::string, binary_operation_fn>& bool_operations
+        {
+            {"&", binary_operation_lambda(CreateAnd)},
+            {"|", binary_operation_lambda(CreateOr)}
+        };
+
         #undef binary_operation_lambda    
 
         static const std::map<Type*, std::map<std::string, binary_operation_fn>>& type_operation
         {
-            {Type::getInt1Ty(*context), integer_operations},
+            {Type::getInt1Ty(*context), bool_operations},
             {Type::getInt8Ty(*context), integer_operations},
             {Type::getInt16Ty(*context), integer_operations},
             {Type::getInt32Ty(*context), integer_operations},

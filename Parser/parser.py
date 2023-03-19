@@ -435,6 +435,15 @@ class Parser:
         if self.current_token.type != TokenType.LBRACE:
             raise Exception("Expected { after loop keyword")
         return LoopNode(self.parse_statement_block())
+    
+    def parse_while(self):
+        self.advance() #Advance past the while keyword
+        condition = self.parse_expression()
+        if self.current_token.type != TokenType.LBRACE:
+            raise Exception("Expected { after while condition")
+        # We add everyting to an "if condition then statements else break"
+        statements = [IfNode(condition, self.parse_statement_block(), [LoopTerminationNode(True)])]
+        return LoopNode(statements)
 
     def parse_statement_block(self):
         self.advance() #Advance past the {
@@ -450,6 +459,8 @@ class Parser:
                 statements.append(self.parse_if_statement())
             elif self.current_token.type == TokenType.LOOP:
                 statements.append(self.parse_loop())
+            elif self.current_token.type == TokenType.WHILE:
+                statements.append(self.parse_while())
             elif self.current_token.type == TokenType.BREAK or self.current_token.type == TokenType.CONTINUE:
                 statements.append(LoopTerminationNode(self.current_token.type == TokenType.BREAK))
                 self.advance() #Advance past the break/continue keyword

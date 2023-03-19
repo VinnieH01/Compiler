@@ -17,10 +17,7 @@ IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::uni
     module(mdl), 
     builder(bldr),
     function_pass_manager(fpm), 
-    in_function(false),
-    loop_break_block(nullptr), 
-    loop_continue_block(nullptr),
-    literal_type(nullptr)
+    in_function(false)
 {
     type_names =
     {
@@ -169,6 +166,10 @@ Value* IRGenerator::visit_unary_node(const json& data)
         {
             {"+", [this](Value* o) { return builder->CreateFAdd(ConstantFP::get(*context, APFloat(0.0)), o); }},
             {"-", [this](Value* o) { return builder->CreateFSub(ConstantFP::get(*context, APFloat(0.0)), o); }},
+        }},
+        {Type::getInt1Ty(*context),
+        {
+            {"!", [this](Value* o) { return builder->CreateNot(o); }},
         }}
     };
 
@@ -349,6 +350,9 @@ Value* IRGenerator::visit_loop_node(const json& data)
     BasicBlock* loop_block = BasicBlock::Create(*context, "loop");
     BasicBlock* continuation_block = BasicBlock::Create(*context, "loopcont");
 
+    //Save these blocks so the "break" and "continue keywords know where to branch to.
+    loop_stack.push({ loop_block, continuation_block });
+
     //We need to branch here because LLVM requires all blocks be terminated somehow. The flow cannot "fall through" into the loop block.
     builder->CreateBr(loop_block);
 
@@ -357,14 +361,10 @@ Value* IRGenerator::visit_loop_node(const json& data)
 
     json body_data = data["body"];
     bool terminate_in_block = false;
+
     for (const json& data : body_data)
     {
-        //We have to set this in the loop since an inner loop node could change it.
-        //Also note: "loop_continue_block" refers to the continue keyword. Not the continuation block
-        loop_break_block = continuation_block;
-        loop_continue_block = loop_block;
-
-        //If we find a "return" or "break" we want to break out of this loop since nothing can run after the return/break anyway.
+        //If we find a "return" or "break/continue" we want to break out of this loop since nothing can run after the return/break anyway.
         //Without this the verifier would complain and the function would be invalid.
         visit_node(data);
         if (data["type"] == "Return" || data["type"] == "LoopTermination")
@@ -374,8 +374,9 @@ Value* IRGenerator::visit_loop_node(const json& data)
         }
     }
 
-    loop_break_block = nullptr;
-    loop_continue_block = nullptr;
+    //We're done with the loop's body so we should remove it from the stack so that the outer loop 
+    //is on top of the stack (if there is an outer one)
+    loop_stack.pop();
 
     //We can only have one terminator
     //Normally this bool would not be set since the code "loop {...; break; ...;}" is unnecessary use of a loop... but it is valid so we need to check for it.
@@ -395,10 +396,13 @@ Value* IRGenerator::visit_loop_node(const json& data)
 
 Value* IRGenerator::visit_loop_termination_node(const json& data)
 {
-    if (!loop_break_block) //Dont need to check continue as well, if one is set the other should be as well.
+    if(loop_stack.size() == 0)
         error("Cannot break/continue outside loop");
 
-    BasicBlock* branch_to = data["break"] ? loop_break_block : loop_continue_block;
+    //Note: "continue_block" refers to the continue keyword and not the "continuation" block
+    auto& [continue_block, break_block] = loop_stack.top();
+
+    BasicBlock* branch_to = data["break"] ? break_block : continue_block;
 
     return builder->CreateBr(branch_to);
 }

@@ -21,6 +21,7 @@ class TokenType:
     BREAK = "BREAK"
     CONTINUE = "CONTINUE"
     LOOP = "LOOP"
+    WHILE = "WHILE"
     TYPE = "TYPE"
     COLON = "COLON"
     AS = "AS"
@@ -104,6 +105,7 @@ def tokenize(code):
         "continue": TokenType.CONTINUE,
         ":": TokenType.COLON,
         "as": TokenType.AS,
+        "while": TokenType.WHILE,
     }
 
     types = {
