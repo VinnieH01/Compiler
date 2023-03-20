@@ -1,4 +1,4 @@
-from lexer import tokenize, TokenType, Token
+from lexer import Lexer, TokenType, Token
 import json
 
 #############################################
@@ -517,7 +517,7 @@ if(len(sys.argv) != 2):
 
 code = open(sys.argv[1], "r").read()
 
-tokens = tokenize(code)
+tokens = Lexer(code).tokenize()
 ast = Parser(tokens).parse()
 
 # Generate an AST string for the codegen

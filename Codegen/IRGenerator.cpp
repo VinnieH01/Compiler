@@ -75,6 +75,10 @@ Value* IRGenerator::visit_literal_node(const json& data)
         {"ptr", [this](const json& j) { 
             if ((uint64_t)j["value"] != 0) error("Cannot create non null pointer literal");
             return ConstantPointerNull::get(PointerType::get(*context, 0)); 
+        }},
+        {"string", [this](const json& j) {
+            //TODO: This will create duplicates which we dont want
+            return builder->CreateGlobalStringPtr((std::string)j["value"], "", 0, module.get());
         }}
     };
 
