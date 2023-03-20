@@ -59,7 +59,7 @@ def tokenize(code):
     # The following regex selects empty chars around ";" and splits on them so from x;y you get [x, ;, y]
     # "(?<=;)|(?=;)" We use this to generate a regex which splits on all operators while also keeping them as tokens
 
-    operators_0 = ["\<\-", "\-\>"] #Here we add multi char operators which contain other operators eg. == has =. 
+    operators_0 = ["\<\-", "\-\>", "\:\="] #Here we add multi char operators which contain other operators eg. == has =. 
                          #This is to prevent the regex from splitting on the = in ==.
     operators_1 = ["\+", "\-", "\*", "\(", "\)", "\;", "\,", "\{", "\}", "\=", "\>", "\<", ":", "\!", "\&", "\|"] 
 
@@ -117,6 +117,7 @@ def tokenize(code):
         "i128": "i128",
         "f32": "f32",
         "f64": "f64",
+        "ptr": "ptr",
     }
 
     tokens = []
@@ -132,6 +133,10 @@ def tokenize(code):
             type = TokenType.LITERAL
             meta["data_type"] = "bool"
             meta["value"] = int(raw_token == "true")
+        elif raw_token == "null":
+            type = TokenType.LITERAL
+            meta["data_type"] = "ptr"
+            meta["value"] = 0
         elif raw_token[0].isalpha() and raw_token.isalnum():
             type = TokenType.IDENTIFIER
             meta["name"] = raw_token

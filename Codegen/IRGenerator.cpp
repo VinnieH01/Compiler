@@ -29,7 +29,8 @@ IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::uni
         {"i64", Type::getInt64Ty(*context)},
         {"i128", Type::getInt128Ty(*context)},
         {"f32", Type::getFloatTy(*context)},
-        {"f64", Type::getDoubleTy(*context)}
+        {"f64", Type::getDoubleTy(*context)},
+        {"ptr", PointerType::get(*context, 0)}
     };
 }
 
@@ -49,7 +50,8 @@ Value* IRGenerator::visit_node(const json& data)
         { "If", [this](const json& j) { return visit_if_node(j); }},
         { "Loop", [this](const json& j) { return visit_loop_node(j); }},
         { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }},
-        { "Cast", [this](const json& j) { return visit_cast_node(j); }}
+        { "Cast", [this](const json& j) { return visit_cast_node(j); }},
+        { "Dereference", [this](const json& j) { return visit_dereference_node(j); }}
     };
 
     if (auto func = dispatch.find(data["type"]); func != dispatch.end()) 
@@ -69,7 +71,11 @@ Value* IRGenerator::visit_literal_node(const json& data)
         {"i64", [this](const json& j) { return ConstantInt::get(*context, APInt(64, (uint64_t)j["value"])); }},
         {"i128", [this](const json& j) { return ConstantInt::get(*context, APInt(128, (uint64_t)j["value"])); }},
         {"f32", [this](const json& j) { return ConstantFP::get(Type::getFloatTy(*context), (double)j["value"]); }},
-        {"f64", [this](const json& j) { return ConstantFP::get(Type::getDoubleTy(*context), (double)j["value"]); }}
+        {"f64", [this](const json& j) { return ConstantFP::get(Type::getDoubleTy(*context), (double)j["value"]); }},
+        {"ptr", [this](const json& j) { 
+            if ((uint64_t)j["value"] != 0) error("Cannot create non null pointer literal");
+            return ConstantPointerNull::get(PointerType::get(*context, 0)); 
+        }}
     };
 
     if (auto func = type_to_const.find(data["data_type"]); func != type_to_const.end()) 
@@ -124,19 +130,31 @@ Value* IRGenerator::visit_binary_node(const json& data)
     if (operation == "<-")
     {
         std::string variable_name = data["left"]["name"];
-        Value* variable_value = visit_node(data["right"]);
-        Value* variable = get_variable(module.get(), named_values, variable_name);
+        Value* rhs_value = visit_node(data["right"]);
+        Value* lhs_variable = get_variable(module.get(), named_values, variable_name);
 
-        if (variable_value->getType() != (isa<GlobalVariable>(variable) 
-            ? cast<GlobalVariable>(variable)->getValueType() 
-            : cast<AllocaInst>(variable)->getAllocatedType())) 
-            error("Incompatible types in assignment: " + variable_name);
+        if (operation == "<-") 
+        {
+            Type* lhs_variable_type = (isa<GlobalVariable>(lhs_variable)
+                ? cast<GlobalVariable>(lhs_variable)->getValueType()
+                : cast<AllocaInst>(lhs_variable)->getAllocatedType());
 
-        return builder->CreateStore(variable_value, variable);
+            if (rhs_value->getType() != lhs_variable_type)
+                error("Incompatible types in assignment: " + variable_name);
+
+            return builder->CreateStore(rhs_value, lhs_variable);
+        }
     }
 
     Value* lhs = visit_node(data["left"]);
     Value* rhs = visit_node(data["right"]);
+
+    if (operation == ":=")
+    {
+        if (!lhs->getType()->isPointerTy())
+            error("Cannot use poinee assignment on non pointer " + (std::string)data["left"]["name"]);
+        return builder->CreateStore(rhs, lhs);
+    }
 
     Type* type = lhs->getType();
 
@@ -150,8 +168,18 @@ Value* IRGenerator::visit_binary_node(const json& data)
 Value* IRGenerator::visit_unary_node(const json& data)
 {
     std::string operation = data["operator"];
-    Value* operand = visit_node(data["operand"]);
+    const json& operand_node = data["operand"];
 
+    //Address of operation is a special cases
+    if (operation == "&") 
+    {
+        if (operand_node["type"] != "Variable")
+            error("Cannot get adress of " + (std::string)operand_node["type"]);
+
+        return get_variable(module.get(), named_values, operand_node["name"]);
+    }
+
+    Value* operand = visit_node(operand_node);
     Type* type = operand->getType();
 
     //TODO: For now only i32 and f64 support unary operators.
@@ -431,4 +459,13 @@ Value* IRGenerator::visit_cast_node(const json& data)
     return type_before->isFloatingPointTy()
         ? builder->CreateFPToSI(before_cast, type_after)
         : builder->CreateSIToFP(before_cast, type_after);
+}
+
+Value* IRGenerator::visit_dereference_node(const json& data)
+{
+    Value* variable = visit_node(data["variable"]);
+    if (!variable->getType()->isPointerTy())
+        error("Cannot dereference non pointer: " + (std::string)data["variable"]["name"]);
+
+    return builder->CreateLoad(type_names[data["data_type"]], variable);
 }

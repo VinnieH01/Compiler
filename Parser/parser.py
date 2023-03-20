@@ -180,6 +180,19 @@ class CastNode:
             "data_type": self.data_type
         }
         return str(node_dict)
+    
+class DereferenceNode:
+    def __init__(self, variable, data_type):
+        self.variable = variable
+        self.data_type = data_type
+
+    def __repr__(self):
+        node_dict = {
+            "type": "Dereference",
+            "variable": self.variable,
+            "data_type": self.data_type
+        }
+        return str(node_dict)
 
 #############################################
 # Parser
@@ -253,20 +266,36 @@ class Parser:
     
     def parse_unary(self):
         token = self.current_token # Get the current token which should be either a valid unary operator or a primary
-        if token.type == TokenType.OPERATOR and token["operator"] in ["+", "-", "!"]:
+        if token.type == TokenType.OPERATOR and token["operator"] in ["+", "-", "!", "&"]:
             self.advance()
             #If it was a unary operator then parse the next unary which is the operand 
             return UnaryNode(token["operator"], self.parse_unary())
         return self.parse_primary() #If it wasn't a unary operator then it must be a primary
     
+    def parse_dereference(self):
+        data_type = self.current_token["data_type"]
+        self.advance() #Advance past the type
+        if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != "<-":
+            raise Exception("Expected <- operator after type")
+        self.advance() #Advance past the <- operator
+        variable = self.parse_primary()
+        if not isinstance(variable, VariableNode):
+            raise Exception("Cannot dereference non variable")
+        return DereferenceNode(variable, data_type)
+
     def parse_primary(self):
         token = self.current_token
         node = None
         if token.type == TokenType.LITERAL:
             self.advance()
             node = LiteralNode(token["value"], token["data_type"])
-        elif token.type == TokenType.TYPE: #Explicitly typed literals
-            node = self.parse_explicit_literal()
+        elif token.type == TokenType.TYPE: 
+            if self.peek().type == TokenType.COLON: #Explicitly typed literals
+                node = self.parse_explicit_literal()
+            elif self.peek().type == TokenType.OPERATOR and self.peek()["operator"] == "<-": #Dereference
+                node = self.parse_dereference()
+            else:
+                raise Exception("Expected a literal or dereference after type")
         elif token.type == TokenType.IDENTIFIER:
             self.advance() #TODO: DO A PEEK HERE INSTEAD AND DONT SEND TOKEN TO FUNCTION CALL
             #If the next token is not a ( then it is a variable
@@ -381,13 +410,15 @@ class Parser:
         return FunctionNode(fn_prototype, self.parse_statement_block())
     
     def parse_assignment(self):
-        variable = self.parse_primary() #The left side of the assignment is a variable which is a primary (identfier)
+        variable = self.parse_primary() #Left hand side of the assignment is a variable which is primary
         if not isinstance(variable, VariableNode):
-            raise Exception("Left side of assignment must be a variable")
-        if self.current_token.type != TokenType.OPERATOR or self.current_token["operator"] != "<-":
-            raise Exception(f"Expected <- after variable name in assignment but got {self.current_token}")
-        self.advance() #Advance past the #
-        return BinaryNode(variable, "<-", self.parse_expression())
+            raise Exception(f"Expected variable on left side of assignment but got {lhs}")
+        if self.current_token.type != TokenType.OPERATOR or (self.current_token["operator"] != "<-" and self.current_token["operator"] != ":="):
+            raise Exception(f"Expected <- or := after variable name in assignment but got {self.current_token}")
+        op = self.current_token["operator"]
+        self.advance() #Advance past the <- or :=
+        return BinaryNode(variable, op, self.parse_expression())
+        
 
     def parse_let(self):
         self.advance() #Advance past the let keyword
@@ -451,7 +482,8 @@ class Parser:
         while self.current_token.type != TokenType.RBRACE:
             if self.current_token.type == TokenType.RET:
                 statements.append(self.parse_return())
-            elif self.current_token.type == TokenType.IDENTIFIER and self.peek().type == TokenType.OPERATOR and self.peek()["operator"] == "<-":
+            elif self.current_token.type == TokenType.IDENTIFIER and self.peek().type == TokenType.OPERATOR and \
+            (self.peek()["operator"] == "<-" or self.peek()["operator"] == ":="):
                 statements.append(self.parse_assignment())
             elif self.current_token.type == TokenType.LET:
                 statements.append(self.parse_let())

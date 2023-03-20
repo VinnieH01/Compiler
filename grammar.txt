@@ -17,6 +17,7 @@ termination     -> RET expr
 
 assignment      -> IDENTIFIER ("<-") expr
                 -> LET TYPE COLON IDENTIFIER ("<-") expr
+                -> IDENTIFIER (":=") expr #Setting pointee value
 
 expr            -> logic
 
@@ -28,11 +29,12 @@ term            -> factor (("+"|"-") factor)*
 
 factor          -> unary ("*" unary)*
 
-unary           -> ("+"|"-"|"!") unary 
+unary           -> ("+"|"-"|"!"|"&") unary 
                 -> primary
 
 primary         -> (NUMBER|IDENTIFIER) 
                 -> TYPE COLON NUMBER
                 -> LPAR expr RPAR
                 -> IDENTIFIER LPAR (expr,)* RPAR #Function call
+                -> TYPE ("<-") IDENTIFIER
                 -> primary AS TYPE

@@ -43,6 +43,7 @@ private:
     llvm::Value* visit_loop_node(const nlohmann::json& data);
     llvm::Value* visit_loop_termination_node(const nlohmann::json& data);
     llvm::Value* visit_cast_node(const nlohmann::json& data);
+    llvm::Value* visit_dereference_node(const nlohmann::json& data);
 public:
     IRGenerator(const std::unique_ptr<llvm::LLVMContext>&, const std::unique_ptr<llvm::Module>&, const std::unique_ptr<llvm::IRBuilder<>>&, const std::unique_ptr<llvm::legacy::FunctionPassManager>&);
     llvm::Value* visit_node(const nlohmann::json& data);
