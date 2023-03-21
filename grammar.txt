@@ -33,7 +33,8 @@ unary           -> ("+"|"-"|"!"|"&") unary
                 -> primary
 
 primary         -> (NUMBER|IDENTIFIER) 
-                -> TYPE COLON NUMBER
+                -> TYPE COLON LITERAL
+                -> "[" (expr ",")* "]" #Struct
                 -> LPAR expr RPAR
                 -> IDENTIFIER LPAR (expr,)* RPAR #Function call
                 -> TYPE ("<-") IDENTIFIER

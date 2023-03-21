@@ -1,6 +1,8 @@
 #include "GeneratorHelper.h"
 #include "Common.h"
 
+#include <sstream>
+
 using namespace llvm;
 
 namespace GeneratorHelper
@@ -85,5 +87,38 @@ namespace GeneratorHelper
             return global_var;
 
         error("Variable does not exist: " + variable_name);
+    }
+
+    Type* get_type_from_string(LLVMContext* context, const std::string& type)
+    {
+        static const std::map<std::string, Type*>& type_names
+        {
+            {"void", Type::getVoidTy(*context)},
+            {"bool", Type::getInt1Ty(*context)},
+            {"i8", Type::getInt8Ty(*context)},
+            {"i16", Type::getInt16Ty(*context)},
+            {"i32", Type::getInt32Ty(*context)},
+            {"i64", Type::getInt64Ty(*context)},
+            {"i128", Type::getInt128Ty(*context)},
+            {"f32", Type::getFloatTy(*context)},
+            {"f64", Type::getDoubleTy(*context)},
+            {"ptr", PointerType::get(*context, 0)}
+        };
+
+        if (auto type_ = type_names.find(type); type_ != type_names.end())
+            return type_->second;
+
+        //If it's not a primitive it's a struct so we need to split the type into it's parts
+        std::istringstream iss(type);
+        std::string sub_str;
+        std::vector<Type*> types;
+        while (std::getline(iss, sub_str, ',')) 
+        {
+            if (auto type = type_names.find(sub_str); type != type_names.end())
+                types.push_back(type->second);
+            else
+                error("Error reading struct type");
+        }
+        return StructType::get(*context, types);
     }
 }

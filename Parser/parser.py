@@ -194,6 +194,17 @@ class DereferenceNode:
         }
         return str(node_dict)
 
+class StructNode:
+    def __init__(self, members):
+        self.members = members
+
+    def __repr__(self):
+        node_dict = {
+            "type": "Struct",
+            "members": self.members
+        }
+        return str(node_dict)
+
 #############################################
 # Parser
 #############################################
@@ -312,6 +323,8 @@ class Parser:
                 raise Exception("Expected )")
             self.advance() #Advance past the )
             node = expr
+        elif token.type == TokenType.LBRACE:
+            node = self.parse_struct()
         
         #After we have the node we need to check if its being cast into a type
         if self.current_token.type == TokenType.AS:
@@ -326,6 +339,18 @@ class Parser:
         
         raise Exception(f"Expected primary but got {token}")
     
+    def parse_struct(self):
+        self.advance() #Advance past the {
+        members = []
+        while self.current_token.type != TokenType.RBRACE:
+            members.append(self.parse_expression())
+            if self.current_token.type != TokenType.COMMA and self.current_token.type != TokenType.RBRACE:
+                raise Exception(f"Expected , in struct but got {self.current_token}")
+            if self.current_token.type == TokenType.COMMA:
+                self.advance()
+        self.advance() #Advance past the }
+        return StructNode(members)
+
     def parse_explicit_literal(self):
         data_type = self.current_token["data_type"]
         self.advance() #Advance past the type

@@ -19,19 +19,6 @@ IRGenerator::IRGenerator(const std::unique_ptr<LLVMContext>& ctx, const std::uni
     function_pass_manager(fpm), 
     in_function(false)
 {
-    type_names =
-    {
-        {"void", Type::getVoidTy(*context)},
-        {"bool", Type::getInt1Ty(*context)},
-        {"i8", Type::getInt8Ty(*context)},
-        {"i16", Type::getInt16Ty(*context)},
-        {"i32", Type::getInt32Ty(*context)},
-        {"i64", Type::getInt64Ty(*context)},
-        {"i128", Type::getInt128Ty(*context)},
-        {"f32", Type::getFloatTy(*context)},
-        {"f64", Type::getDoubleTy(*context)},
-        {"ptr", PointerType::get(*context, 0)}
-    };
 }
 
 Value* IRGenerator::visit_node(const json& data)
@@ -51,7 +38,8 @@ Value* IRGenerator::visit_node(const json& data)
         { "Loop", [this](const json& j) { return visit_loop_node(j); }},
         { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }},
         { "Cast", [this](const json& j) { return visit_cast_node(j); }},
-        { "Dereference", [this](const json& j) { return visit_dereference_node(j); }}
+        { "Dereference", [this](const json& j) { return visit_dereference_node(j); }},
+        { "Struct", [this](const json& j) { return visit_struct_node(j); }}
     };
 
     if (auto func = dispatch.find(data["type"]); func != dispatch.end()) 
@@ -102,7 +90,7 @@ Value* IRGenerator::visit_variable_node(const json& data)
 Value* IRGenerator::visit_let_node(const json& data)
 {
     Value* value = visit_node(data["value"]);
-    Type* type = type_names.at(data["data_type"]);
+    Type* type = get_type_from_string(context.get(), data["data_type"]);
     std::string variable_name = data["name"];
 
     if (type != value->getType())
@@ -231,10 +219,10 @@ Function* IRGenerator::visit_prototype_node(const json& data)
     arg_types.reserve(arg_types_str.size());
     for (const std::string& str : arg_types_str) 
     {
-        arg_types.push_back(type_names.at(str));
+        arg_types.push_back(get_type_from_string(context.get(), str));
     }
 
-    Type* return_type = type_names.at(data["ret_type"]);
+    Type* return_type = get_type_from_string(context.get(), data["ret_type"]);
     FunctionType* func_type = FunctionType::get(return_type, arg_types, false);
 
     Function* function = Function::Create(func_type, Function::ExternalLinkage, name, module.get());
@@ -443,7 +431,7 @@ Value* IRGenerator::visit_cast_node(const json& data)
 {
     Value* before_cast = visit_node(data["value"]);
     Type* type_before = before_cast->getType();
-    Type* type_after = type_names[data["data_type"]];
+    Type* type_after = get_type_from_string(context.get(), data["data_type"]);
 
     //If the types are the same we don't need to perform a cast
     if (type_before == type_after) return before_cast;
@@ -459,10 +447,14 @@ Value* IRGenerator::visit_cast_node(const json& data)
         return bit_extension ? builder->CreateFPExt(before_cast, type_after)
             : builder->CreateFPTrunc(before_cast, type_after);
 
-    //If none of the above was true we either want a FP -> Int conversion or vice verse
-    return type_before->isFloatingPointTy()
-        ? builder->CreateFPToSI(before_cast, type_after)
-        : builder->CreateSIToFP(before_cast, type_after);
+    if (type_before->isFloatingPointTy() && type_after->isIntegerTy())
+        return builder->CreateFPToSI(before_cast, type_after);
+
+    if (type_before->isIntegerTy() && type_after->isFloatingPointTy())
+        return builder->CreateSIToFP(before_cast, type_after);
+    
+    //If they're not both primitives we perform a bitcast (this will be on things like structs)
+    //return builder->CreateBitCast(before_cast, type_after);
 }
 
 Value* IRGenerator::visit_dereference_node(const json& data)
@@ -471,5 +463,38 @@ Value* IRGenerator::visit_dereference_node(const json& data)
     if (!variable->getType()->isPointerTy())
         error("Cannot dereference non pointer: " + (std::string)data["variable"]["name"]);
 
-    return builder->CreateLoad(type_names[data["data_type"]], variable);
+    return builder->CreateLoad(get_type_from_string(context.get(), data["data_type"]), variable);
+}
+
+Value* IRGenerator::visit_struct_node(const json& data)
+{
+    if (!in_function)
+        error("Can only create struct in function"); //For now we cant declare global structs. They have to be pointers
+    
+    Function* func = builder->GetInsertBlock()->getParent();
+
+    const json& member_nodes = data["members"];
+    std::vector<Value*> members;
+    std::vector<Type*> member_types;
+
+    for (const json& node : member_nodes) 
+    {
+        Value* member = visit_node(node);
+        members.push_back(member);
+        member_types.push_back(member->getType());
+    }
+
+    //First generate the struct type to be {member1.type, member2.type ...} and alloca one such struct
+    auto* struct_type = StructType::get(*context, member_types);
+    AllocaInst* struct_alloc = create_alloca_at_top(func, "struct", struct_type);
+    
+    //Then get pointers to each member of the struct and set the value at that pointer to be the value of the member we are initializing it to
+    for (unsigned i = 0; i < members.size(); ++i) 
+    {
+        Value* ptr_to_member = builder->CreateStructGEP(struct_type, struct_alloc, i);
+        builder->CreateStore(members[i], ptr_to_member);
+    }
+
+    //Finally get the struct from the alloca
+    return builder->CreateLoad(struct_type, struct_alloc);
 }

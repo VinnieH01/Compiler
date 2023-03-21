@@ -14,6 +14,8 @@ class TokenType:
     EOF = "EOF"
     LBRACE = "LBRACE"
     RBRACE = "RBRACE"
+    LBRACKET = "LBRACKET"
+    RBRACKET = "RBRACKET"
     RET = "RET"
     LET = "LET"
     IF = "IF"
@@ -56,6 +58,8 @@ class Lexer():
             ",": TokenType.COMMA,
             "{": TokenType.LBRACE,
             "}": TokenType.RBRACE,
+            "[": TokenType.LBRACKET,
+            "]": TokenType.RBRACKET,
             "ret": TokenType.RET,
             "let": TokenType.LET,
             "if": TokenType.IF,
@@ -67,8 +71,8 @@ class Lexer():
             "as": TokenType.AS,
             "while": TokenType.WHILE,
         }
-        self.operator_constituents = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|"] 
-        self.operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "<-", "->", ":="] 
+        self.operator_constituents = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "[", "]"] 
+        self.operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "<-", "->", ":=", "[", "]"] 
         self.types = {
             "bool": "bool",
             "i8": "i8",
@@ -122,6 +126,8 @@ class Lexer():
             return Token(self.keywords[result], {})
         if result in self.types:
             return Token(TokenType.TYPE, {"data_type": result})
+        if result == "struct" and self.current_char == "{":
+            return self.tokenize_struct()
         if result in self.literals:
             return self.literals[result]
         return Token(TokenType.IDENTIFIER, {"name": result})
@@ -161,6 +167,20 @@ class Lexer():
             self.advance()
         self.advance() # Skip the last "
         return Token(TokenType.LITERAL, {"data_type": "string", "value": result})
+    
+    def tokenize_struct(self):
+        result = ""
+        self.advance() # Skip the first {
+        while self.current_char != None and self.current_char != '}':
+            if self.current_char.isspace():
+                self.advance() # Skip whitespace between types in struct
+            elif self.current_char.isalnum() or self.current_char == ',':
+                result += self.current_char
+                self.advance()
+            else:
+                raise Exception(f"Unknown char in struct: {self.current_char}")
+        self.advance() # Skip the last }
+        return Token(TokenType.TYPE, {"data_type": result})
 
 
 

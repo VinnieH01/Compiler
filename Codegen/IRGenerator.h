@@ -22,9 +22,6 @@ private:
 
 	std::map<std::string, llvm::AllocaInst*> named_values;
 
-    //This is used to convert parser type strings to actual llvm types
-    std::map<std::string, llvm::Type*> type_names;
-
     //This is used to keep track of where a "break" or "continue" keyword should branch to.
     std::stack<std::tuple<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack;
 
@@ -44,6 +41,7 @@ private:
     llvm::Value* visit_loop_termination_node(const nlohmann::json& data);
     llvm::Value* visit_cast_node(const nlohmann::json& data);
     llvm::Value* visit_dereference_node(const nlohmann::json& data);
+    llvm::Value* visit_struct_node(const nlohmann::json& data);
 public:
     IRGenerator(const std::unique_ptr<llvm::LLVMContext>&, const std::unique_ptr<llvm::Module>&, const std::unique_ptr<llvm::IRBuilder<>>&, const std::unique_ptr<llvm::legacy::FunctionPassManager>&);
     llvm::Value* visit_node(const nlohmann::json& data);
