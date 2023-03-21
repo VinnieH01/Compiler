@@ -2,11 +2,11 @@ http://craftinginterpreters.com/representing-code.html#context-free-grammars
 
 stmt            -> FN|ACTN IDENTIFIER LPAR (TYPE COLON IDENTIFIER,)* RPAR ("->") TYPE LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)+ RBRACE SEMICOLON #Function/Non-returning function definition
                 -> DEC ACTN? IDENTIFIER LPAR (TYPE COLON IDENTIFIER,)* RPAR ("->") TYPE SEMICOLON #Function declaration/prototype
-                -> assignment SEMICOLON #Only let assignment
+                -> let SEMICOLON
 
-if_statement    -> IF expr LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)* RBRACE
-                -> if_statement ELSE LBRACE (expr|termination|assignment|if_statement)* RBRACE
-                -> if_statement ELSE IF expr LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)* RBRACE
+if_statement    -> IF expr LBRACE (expr|termination|assignment|pointee_assignment|let|if_statement|loop SEMICOLON)* RBRACE
+                -> if_statement ELSE LBRACE (expr|termination|assignment|pointee_assignment|let|if_statement)* RBRACE
+                -> if_statement ELSE IF expr LBRACE (expr|termination|assignment|pointee_assignment|let|if_statement|loop SEMICOLON)* RBRACE
 
 loop            -> LOOP LBRACE (expr)* RBRACE
                 -> WHILE expr LBRACE (expr)* RBRACE
@@ -15,11 +15,13 @@ termination     -> RET expr
                 -> BREAK
                 -> CONTINUE
 
-assignment      -> IDENTIFIER ("<-") expr
-                -> LET TYPE COLON IDENTIFIER ("<-") expr
-                -> IDENTIFIER (":=") expr #Setting pointee value
+let             -> LET TYPE COLON IDENTIFIER ("<-") expr
 
-expr            -> logic
+assignment      -> IDENTIFIER ("<-") expr
+
+expr            -> pointee_assignment
+
+pointee_assignment -> comparison (":=") comparison #Setting pointee value
 
 logic           -> comparison (("&"|"|") comparison)*
 
@@ -36,6 +38,7 @@ primary         -> (NUMBER|IDENTIFIER)
                 -> TYPE COLON LITERAL
                 -> "[" (expr ",")* "]" #Struct
                 -> LPAR expr RPAR
+                -> IDENTIFIER "[" INTEGER "]" #Getting struct member
                 -> IDENTIFIER LPAR (expr,)* RPAR #Function call
                 -> TYPE ("<-") IDENTIFIER
                 -> primary AS TYPE

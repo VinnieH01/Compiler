@@ -56,6 +56,7 @@ Value* IRGenerator::visit_literal_node(const json& data)
         {"i8", [this](const json& j) { return ConstantInt::get(*context, APInt(8, (uint64_t)j["value"])); }},
         {"i16", [this](const json& j) { return ConstantInt::get(*context, APInt(16, (uint64_t)j["value"])); }},
         {"i32", [this](const json& j) { return ConstantInt::get(*context, APInt(32, (uint64_t)j["value"])); }},
+        {"integer", [this](const json& j) { return ConstantInt::get(*context, APInt(32, (uint64_t)j["value"])); }}, //Default for int is 32 bit
         {"i64", [this](const json& j) { return ConstantInt::get(*context, APInt(64, (uint64_t)j["value"])); }},
         {"i128", [this](const json& j) { return ConstantInt::get(*context, APInt(128, (uint64_t)j["value"])); }},
         {"f32", [this](const json& j) { return ConstantFP::get(Type::getFloatTy(*context), (double)j["value"]); }},
@@ -73,7 +74,7 @@ Value* IRGenerator::visit_literal_node(const json& data)
     if (auto func = type_to_const.find(data["data_type"]); func != type_to_const.end()) 
         return func->second(data);
 
-    error("Cannot infer datatype of literal");
+    error("Cannot get datatype of literal");
 }
 
 Value* IRGenerator::visit_variable_node(const json& data)
@@ -136,6 +137,32 @@ Value* IRGenerator::visit_binary_node(const json& data)
 
             return builder->CreateStore(rhs_value, lhs_variable);
         }
+    }
+
+    //Index (also don't want to evaluate the lhs)
+    if (operation == "[]")
+    {
+        Value* struct_ptr = get_variable(module.get(), named_values, (std::string)data["left"]["name"]);
+
+        Type* struct_type = (isa<GlobalVariable>(struct_ptr)
+            ? cast<GlobalVariable>(struct_ptr)->getValueType()
+            : cast<AllocaInst>(struct_ptr)->getAllocatedType());
+
+        Value* rhs_value = visit_node(data["right"]);
+
+        if (!struct_type->isStructTy())
+            error("Cannot use indexing on non struct");
+
+        unsigned index = 0;
+        if (ConstantInt* index_ci = dyn_cast<ConstantInt>(rhs_value))
+        {
+            index = index_ci->getZExtValue();
+            if (index >= struct_type->getNumContainedTypes())
+              error("Index out of bounds in struct");
+        }
+        else { error("Indexing into a struct requires a constant integer index"); }
+
+        return builder->CreateStructGEP(struct_type, struct_ptr, index);
     }
 
     Value* lhs = visit_node(data["left"]);
@@ -438,7 +465,7 @@ Value* IRGenerator::visit_cast_node(const json& data)
 
     bool bit_extension = type_after->getPrimitiveSizeInBits() > type_before->getPrimitiveSizeInBits();
 
-    if (type_before->isIntegerTy() && type_after->isIntegerTy()) //Cant do == on types here as different sized ints are different types
+    if (type_before->isIntegerTy() && type_after->isIntegerTy())
         //If the new type is larger we want to performe a signed extension of the bits otherwise we truncate
         return bit_extension ? builder->CreateSExt(before_cast, type_after)
             : builder->CreateTrunc(before_cast, type_after);
@@ -453,8 +480,7 @@ Value* IRGenerator::visit_cast_node(const json& data)
     if (type_before->isIntegerTy() && type_after->isFloatingPointTy())
         return builder->CreateSIToFP(before_cast, type_after);
     
-    //If they're not both primitives we perform a bitcast (this will be on things like structs)
-    //return builder->CreateBitCast(before_cast, type_after);
+    error("Cant perform cast");
 }
 
 Value* IRGenerator::visit_dereference_node(const json& data)
