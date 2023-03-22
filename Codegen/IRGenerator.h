@@ -11,6 +11,7 @@
 #include <llvm/IR/IRBuilder.h>
 
 #include "json.hpp"
+#include "Struct.h"
 
 class IRGenerator
 {
@@ -21,6 +22,7 @@ private:
 	const std::unique_ptr<llvm::legacy::FunctionPassManager>& function_pass_manager;
 
 	std::map<std::string, llvm::AllocaInst*> named_values;
+    std::map<std::string, Struct> named_types;
 
     //This is used to keep track of where a "break" or "continue" keyword should branch to.
     std::stack<std::tuple<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack;
@@ -41,7 +43,8 @@ private:
     llvm::Value* visit_loop_termination_node(const nlohmann::json& data);
     llvm::Value* visit_cast_node(const nlohmann::json& data);
     llvm::Value* visit_dereference_node(const nlohmann::json& data);
-    llvm::Value* visit_struct_node(const nlohmann::json& data);
+    llvm::Value* visit_struct_instance_node(const nlohmann::json& data);
+    llvm::Value* visit_struct_definition_node(const nlohmann::json& data);
 public:
     IRGenerator(const std::unique_ptr<llvm::LLVMContext>&, const std::unique_ptr<llvm::Module>&, const std::unique_ptr<llvm::IRBuilder<>>&, const std::unique_ptr<llvm::legacy::FunctionPassManager>&);
     llvm::Value* visit_node(const nlohmann::json& data);

@@ -194,14 +194,27 @@ class DereferenceNode:
         }
         return str(node_dict)
 
-class StructNode:
+class StructInstanceNode:
     def __init__(self, members):
         self.members = members
 
     def __repr__(self):
         node_dict = {
-            "type": "Struct",
+            "type": "StructInstance",
             "members": self.members
+        }
+        return str(node_dict)
+
+class StructDefinitionNode:
+    def __init__(self, name, member_types):
+        self.name = name
+        self.member_types = member_types
+
+    def __repr__(self):
+        node_dict = {
+            "type": "StructDefinition",
+            "name": self.name,
+            "member_types": self.member_types
         }
         return str(node_dict)
 
@@ -237,7 +250,9 @@ class Parser:
                 if not isinstance(let_statement.value, LiteralNode):
                     raise Exception("Global let statements must be initialized with a literal")
                 statements.append(let_statement)
-            else:
+            elif self.current_token.type == TokenType.STRUCT:
+                statements.append(self.parse_struct_definition())
+            else:   
                 raise Exception(f"Top level expressions are not allowed")
                 #statements.append(self.parse_expression())
             # Statements are separated by semicolons
@@ -296,7 +311,6 @@ class Parser:
         return DereferenceNode(variable, data_type)
 
     def parse_primary(self):
-        #token = self.current_token
         node = None
         if self.current_token.type == TokenType.LITERAL:
             node = LiteralNode(self.current_token["value"], self.current_token["data_type"])
@@ -326,7 +340,7 @@ class Parser:
             self.advance() #Advance past the )
             node = expr
         elif self.current_token.type == TokenType.LBRACE:
-            node = self.parse_struct()
+            node = self.parse_struct_instance()
         
         #After we have the node we need to check if its being cast into a type
         if self.current_token.type == TokenType.AS:
@@ -339,8 +353,38 @@ class Parser:
         if node is not None:
             return node
         
-        raise Exception(f"Expected primary but got {token}")
+        raise Exception(f"Expected primary but got {self.current_token}")
     
+    def parse_struct_definition(self):
+        self.advance() #Advance past the struct keyword
+        if self.current_token.type != TokenType.IDENTIFIER:
+            raise Exception("Expected identifier after struct")
+        struct_name = self.current_token["name"]
+        self.advance() #Advance past the identifier
+        if self.current_token.type != TokenType.LBRACE:
+            raise Exception("Expected { after struct name")
+        self.advance() #Advance past the {
+        members = []
+        while self.current_token.type != TokenType.RBRACE:
+            if self.current_token.type != TokenType.TYPE:
+                raise Exception("Expected type in struct definition")
+            data_type = self.current_token["data_type"]
+            self.advance() #Advance past the type
+            if self.current_token.type != TokenType.COLON:
+                raise Exception("Expected : in struct definition")
+            self.advance() #Advance past the :
+            if self.current_token.type != TokenType.IDENTIFIER:
+                raise Exception("Expected identifier in struct definition")
+            member_name = self.current_token["name"]
+            self.advance() #Advance past the identifier
+            members.append(data_type) #TODO: Add support name of member
+            if self.current_token.type != TokenType.COMMA and self.current_token.type != TokenType.RBRACE:
+                raise Exception("Expected , or in struct definition")
+            if self.current_token.type == TokenType.COMMA:
+                self.advance() 
+        self.advance() #Advance past the }
+        return StructDefinitionNode(struct_name, members)
+
     def parse_index(self):
         variable = VariableNode(self.current_token["name"])
         self.advance() #Advance past the identifier
@@ -354,7 +398,7 @@ class Parser:
         #Indexes are just binary operators between the variable and the index
         return BinaryNode(variable, "[]", index)
 
-    def parse_struct(self):
+    def parse_struct_instance(self):
         self.advance() #Advance past the {
         members = []
         while self.current_token.type != TokenType.RBRACE:
@@ -364,7 +408,7 @@ class Parser:
             if self.current_token.type == TokenType.COMMA:
                 self.advance()
         self.advance() #Advance past the }
-        return StructNode(members)
+        return StructInstanceNode(members)
 
     def parse_explicit_literal(self):
         data_type = self.current_token["data_type"]
@@ -417,9 +461,12 @@ class Parser:
         args = []
         arg_types = []
         while self.current_token.type != TokenType.RPAR:
-            if self.current_token.type != TokenType.TYPE:
-                raise Exception("Expected type before argument name")
-            arg_types.append(self.current_token["data_type"])
+            if self.current_token.type == TokenType.TYPE:
+                arg_types.append(self.current_token["data_type"])
+            elif self.current_token.type == TokenType.IDENTIFIER:
+                arg_types.append(self.current_token["name"])
+            else:
+                raise Exception("Expected type or identifier before argument name")
             self.advance() #Advance past the type
             if self.current_token.type != TokenType.COLON:
                 raise Exception("Expected : after argument type")
@@ -464,9 +511,12 @@ class Parser:
 
     def parse_let(self):
         self.advance() #Advance past the let keyword
-        if self.current_token.type != TokenType.TYPE:
-            raise Exception("Expected type after let")
-        data_type = self.current_token["data_type"]
+        if self.current_token.type == TokenType.TYPE:
+            data_type = self.current_token["data_type"]
+        elif self.current_token.type == TokenType.IDENTIFIER:
+            data_type = self.current_token["name"]
+        else:
+            raise Exception("Expected type or identifier after let")
         self.advance() #Advance past the type
         if self.current_token.type != TokenType.COLON:
             raise Exception("Expected : after type in let")

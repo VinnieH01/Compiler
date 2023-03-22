@@ -39,7 +39,8 @@ Value* IRGenerator::visit_node(const json& data)
         { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }},
         { "Cast", [this](const json& j) { return visit_cast_node(j); }},
         { "Dereference", [this](const json& j) { return visit_dereference_node(j); }},
-        { "Struct", [this](const json& j) { return visit_struct_node(j); }}
+        { "StructInstance", [this](const json& j) { return visit_struct_instance_node(j); }},
+        { "StructDefinition", [this](const json& j) { return visit_struct_definition_node(j); }}
     };
 
     if (auto func = dispatch.find(data["type"]); func != dispatch.end()) 
@@ -91,7 +92,7 @@ Value* IRGenerator::visit_variable_node(const json& data)
 Value* IRGenerator::visit_let_node(const json& data)
 {
     Value* value = visit_node(data["value"]);
-    Type* type = get_type_from_string(context.get(), data["data_type"]);
+    Type* type = get_type_from_string(context.get(), named_types, data["data_type"]);
     std::string variable_name = data["name"];
 
     if (type != value->getType())
@@ -246,10 +247,10 @@ Function* IRGenerator::visit_prototype_node(const json& data)
     arg_types.reserve(arg_types_str.size());
     for (const std::string& str : arg_types_str) 
     {
-        arg_types.push_back(get_type_from_string(context.get(), str));
+        arg_types.push_back(get_type_from_string(context.get(), named_types, str));
     }
 
-    Type* return_type = get_type_from_string(context.get(), data["ret_type"]);
+    Type* return_type = get_type_from_string(context.get(), named_types, data["ret_type"]);
     FunctionType* func_type = FunctionType::get(return_type, arg_types, false);
 
     Function* function = Function::Create(func_type, Function::ExternalLinkage, name, module.get());
@@ -458,7 +459,7 @@ Value* IRGenerator::visit_cast_node(const json& data)
 {
     Value* before_cast = visit_node(data["value"]);
     Type* type_before = before_cast->getType();
-    Type* type_after = get_type_from_string(context.get(), data["data_type"]);
+    Type* type_after = get_type_from_string(context.get(), named_types, data["data_type"]);
 
     //If the types are the same we don't need to perform a cast
     if (type_before == type_after) return before_cast;
@@ -489,10 +490,10 @@ Value* IRGenerator::visit_dereference_node(const json& data)
     if (!variable->getType()->isPointerTy())
         error("Cannot dereference non pointer: " + (std::string)data["variable"]["name"]);
 
-    return builder->CreateLoad(get_type_from_string(context.get(), data["data_type"]), variable);
+    return builder->CreateLoad(get_type_from_string(context.get(), named_types, data["data_type"]), variable);
 }
 
-Value* IRGenerator::visit_struct_node(const json& data)
+Value* IRGenerator::visit_struct_instance_node(const json& data)
 {
     if (!in_function)
         error("Can only create struct in function"); //For now we cant declare global structs. They have to be pointers
@@ -523,4 +524,15 @@ Value* IRGenerator::visit_struct_node(const json& data)
 
     //Finally get the struct from the alloca
     return builder->CreateLoad(struct_type, struct_alloc);
+}
+
+Value* IRGenerator::visit_struct_definition_node(const json& data)
+{
+    std::vector<std::string> types;
+    for (std::string type : data["member_types"])
+    {
+        types.push_back(type);
+    }
+    named_types.emplace(data["name"], types);
+    return nullptr;
 }

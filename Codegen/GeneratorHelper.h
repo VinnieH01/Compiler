@@ -8,6 +8,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/IRBuilder.h>
+#include "Struct.h"
 
 namespace GeneratorHelper
 {
@@ -19,5 +20,5 @@ namespace GeneratorHelper
 
     llvm::Value* get_variable(llvm::Module* module, std::map<std::string, llvm::AllocaInst*>& local_variables, const std::string& variable_name); 
 
-    llvm::Type* get_type_from_string(llvm::LLVMContext* context, const std::string& type);
+    llvm::Type* get_type_from_string(llvm::LLVMContext* context, const std::map<std::string, Struct>&, const std::string& type);
 }

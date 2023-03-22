@@ -27,6 +27,7 @@ class TokenType:
     TYPE = "TYPE"
     COLON = "COLON"
     AS = "AS"
+    STRUCT = "STRUCT"
 
 class Token:
     def __init__(self, type, meta):
@@ -70,6 +71,7 @@ class Lexer():
             ":": TokenType.COLON,
             "as": TokenType.AS,
             "while": TokenType.WHILE,
+            "struct": TokenType.STRUCT,
         }
         self.operator_constituents = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "[", "]"] 
         self.operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "<-", "->", ":=", "[", "]"] 
@@ -126,8 +128,6 @@ class Lexer():
             return Token(self.keywords[result], {})
         if result in self.types:
             return Token(TokenType.TYPE, {"data_type": result})
-        if result == "struct" and self.current_char == "{":
-            return self.tokenize_struct()
         if result in self.literals:
             return self.literals[result]
         return Token(TokenType.IDENTIFIER, {"name": result})
@@ -168,7 +168,7 @@ class Lexer():
         self.advance() # Skip the last "
         return Token(TokenType.LITERAL, {"data_type": "string", "value": result})
     
-    def tokenize_struct(self):
+    '''def tokenize_struct(self):
         result = ""
         self.advance() # Skip the first {
         while self.current_char != None and self.current_char != '}':
@@ -180,7 +180,7 @@ class Lexer():
             else:
                 raise Exception(f"Unknown char in struct: {self.current_char}")
         self.advance() # Skip the last }
-        return Token(TokenType.TYPE, {"data_type": result})
+        return Token(TokenType.TYPE, {"data_type": result})'''
 
 
 

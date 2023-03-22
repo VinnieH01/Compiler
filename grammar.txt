@@ -1,8 +1,11 @@
 http://craftinginterpreters.com/representing-code.html#context-free-grammars
 
-stmt            -> FN|ACTN IDENTIFIER LPAR (TYPE COLON IDENTIFIER,)* RPAR ("->") TYPE LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)+ RBRACE SEMICOLON #Function/Non-returning function definition
-                -> DEC ACTN? IDENTIFIER LPAR (TYPE COLON IDENTIFIER,)* RPAR ("->") TYPE SEMICOLON #Function declaration/prototype
+stmt            -> FN|ACTN IDENTIFIER LPAR (TYPE|IDENTIFIER COLON IDENTIFIER,)* RPAR ("->") TYPE LBRACE (expr|termination|assignment|if_statement|loop SEMICOLON)+ RBRACE SEMICOLON #Function/Non-returning function definition
+                -> DEC ACTN? IDENTIFIER LPAR (TYPE|IDENTIFIER COLON IDENTIFIER,)* RPAR ("->") TYPE SEMICOLON #Function declaration/prototype
                 -> let SEMICOLON
+                -> struct SEMICOLON
+
+struct          -> STRUCT IDENTIFIER LBRACE (TYPE COLON IDENTIFIER,)+ RBRACE
 
 if_statement    -> IF expr LBRACE (expr|termination|assignment|pointee_assignment|let|if_statement|loop SEMICOLON)* RBRACE
                 -> if_statement ELSE LBRACE (expr|termination|assignment|pointee_assignment|let|if_statement)* RBRACE
@@ -15,7 +18,7 @@ termination     -> RET expr
                 -> BREAK
                 -> CONTINUE
 
-let             -> LET TYPE COLON IDENTIFIER ("<-") expr
+let             -> LET TYPE|IDENTIFIER COLON IDENTIFIER ("<-") expr
 
 assignment      -> IDENTIFIER ("<-") expr
 
@@ -35,10 +38,10 @@ unary           -> ("+"|"-"|"!"|"&") unary
                 -> primary
 
 primary         -> (NUMBER|IDENTIFIER) 
-                -> TYPE COLON LITERAL
-                -> "[" (expr ",")* "]" #Struct
+                -> TYPE|IDENTIFIER COLON LITERAL
+                -> "{" (expr ",")* "}" #Struct
                 -> LPAR expr RPAR
                 -> IDENTIFIER "[" INTEGER "]" #Getting struct member
                 -> IDENTIFIER LPAR (expr,)* RPAR #Function call
-                -> TYPE ("<-") IDENTIFIER
+                -> TYPE|IDENTIFIER ("<-") IDENTIFIER #Dereference
                 -> primary AS TYPE

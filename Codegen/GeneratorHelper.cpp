@@ -89,7 +89,7 @@ namespace GeneratorHelper
         error("Variable does not exist: " + variable_name);
     }
 
-    Type* get_type_from_string(LLVMContext* context, const std::string& type)
+    Type* get_type_from_string(LLVMContext* context, const std::map<std::string, Struct>& named_types, const std::string& type)
     {
         static const std::map<std::string, Type*>& type_names
         {
@@ -109,7 +109,15 @@ namespace GeneratorHelper
             return type_->second;
 
         //If it's not a primitive it's a struct so we need to split the type into it's parts
-        std::istringstream iss(type);
+
+        std::string comma_separated_types;
+        if (auto struct_type = named_types.find(type); struct_type != named_types.end())
+        {
+            comma_separated_types = struct_type->second.get_type();
+        }
+
+        outs() << comma_separated_types;
+        std::istringstream iss(comma_separated_types);
         std::string sub_str;
         std::vector<Type*> types;
         while (std::getline(iss, sub_str, ',')) 
