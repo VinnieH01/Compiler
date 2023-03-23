@@ -15,16 +15,7 @@ namespace GeneratorHelper
         return entry_builder.CreateAlloca(type, nullptr, variable_name);
     }
 
-    GlobalVariable* create_global_variable(Module* module, const std::string& variable_name, Type* type, Constant* init_val)
-    {
-        //This includes other types of values not just global variables (such as function names).
-        if (module->getNamedValue(variable_name))
-            error("Cannot redefine symbol: " + variable_name);
-
-        return new GlobalVariable(*module, type, false, GlobalValue::ExternalLinkage, init_val, variable_name);
-    }
-
-    binary_operation_fn get_binary_operation_fn(LLVMContext* context, Type* type, const std::string& operation)
+    binary_operation_fn get_binary_operation_fn(Type* type, const std::string& operation)
     {
         #define binary_operation_lambda(operation) [](IRBuilder<>* builder, Value* lhs, Value* rhs) { return builder->operation(lhs, rhs); }
 
@@ -54,18 +45,18 @@ namespace GeneratorHelper
             {"|", binary_operation_lambda(CreateOr)}
         };
 
-        #undef binary_operation_lambda    
+        #undef binary_operation_lambda
 
         static const std::map<Type*, std::map<std::string, binary_operation_fn>>& type_operation
         {
-            {Type::getInt1Ty(*context), bool_operations},
-            {Type::getInt8Ty(*context), integer_operations},
-            {Type::getInt16Ty(*context), integer_operations},
-            {Type::getInt32Ty(*context), integer_operations},
-            {Type::getInt64Ty(*context), integer_operations},
-            {Type::getInt128Ty(*context), integer_operations},
-            {Type::getFloatTy(*context), float_operations},
-            {Type::getDoubleTy(*context), float_operations}
+            {Type::getInt1Ty(get_context()), bool_operations},
+            {Type::getInt8Ty(get_context()), integer_operations},
+            {Type::getInt16Ty(get_context()), integer_operations},
+            {Type::getInt32Ty(get_context()), integer_operations},
+            {Type::getInt64Ty(get_context()), integer_operations},
+            {Type::getInt128Ty(get_context()), integer_operations},
+            {Type::getFloatTy(get_context()), float_operations},
+            {Type::getDoubleTy(get_context()), float_operations}
         };
 
         if (auto operations = type_operation.find(type); operations != type_operation.end())
@@ -77,56 +68,34 @@ namespace GeneratorHelper
         error("This binary operator cannot be applied to the supplied values: " + operation);
     }
 
-    Value* get_variable(llvm::Module* module, std::map<std::string, llvm::AllocaInst*>& local_variables, const std::string& variable_name)
-    {
-        //Local variable takes precedence
-        if (auto local_var = local_variables.find(variable_name); local_var != local_variables.end())
-            return local_var->second;
-
-        if (auto global_var = module->getNamedGlobal(variable_name))
-            return global_var;
-
-        error("Variable does not exist: " + variable_name);
-    }
-
-    Type* get_type_from_string(LLVMContext* context, const std::map<std::string, Struct>& named_types, const std::string& type)
+    Type* get_type_from_string(const std::map<std::string, Struct>& named_types, const std::string& type)
     {
         static const std::map<std::string, Type*>& type_names
         {
-            {"void", Type::getVoidTy(*context)},
-            {"bool", Type::getInt1Ty(*context)},
-            {"i8", Type::getInt8Ty(*context)},
-            {"i16", Type::getInt16Ty(*context)},
-            {"i32", Type::getInt32Ty(*context)},
-            {"i64", Type::getInt64Ty(*context)},
-            {"i128", Type::getInt128Ty(*context)},
-            {"f32", Type::getFloatTy(*context)},
-            {"f64", Type::getDoubleTy(*context)},
-            {"ptr", PointerType::get(*context, 0)}
+            {"void", Type::getVoidTy(get_context())},
+            {"bool", Type::getInt1Ty(get_context())},
+            {"i8", Type::getInt8Ty(get_context())},
+            {"i16", Type::getInt16Ty(get_context())},
+            {"i32", Type::getInt32Ty(get_context())},
+            {"i64", Type::getInt64Ty(get_context())},
+            {"i128", Type::getInt128Ty(get_context())},
+            {"f32", Type::getFloatTy(get_context())},
+            {"f64", Type::getDoubleTy(get_context())},
+            {"ptr", PointerType::get(get_context(), 0)}
         };
 
         if (auto type_ = type_names.find(type); type_ != type_names.end())
             return type_->second;
 
-        //If it's not a primitive it's a struct so we need to split the type into it's parts
-
-        std::string comma_separated_types;
         if (auto struct_type = named_types.find(type); struct_type != named_types.end())
-        {
-            comma_separated_types = struct_type->second.get_type();
-        }
+            return struct_type->second.get_type();
 
-        outs() << comma_separated_types;
-        std::istringstream iss(comma_separated_types);
-        std::string sub_str;
-        std::vector<Type*> types;
-        while (std::getline(iss, sub_str, ',')) 
-        {
-            if (auto type = type_names.find(sub_str); type != type_names.end())
-                types.push_back(type->second);
-            else
-                error("Error reading struct type");
-        }
-        return StructType::get(*context, types);
+        error("Invalid type: " + type);
+    }
+
+    Type* get_type_from_string(const std::string& type)
+    {
+        static const std::map<std::string, Struct>& no_named {};
+        return get_type_from_string(no_named, type);
     }
 }

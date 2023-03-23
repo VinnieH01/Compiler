@@ -3,13 +3,14 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <llvm/IR/DerivedTypes.h>
 
 class Struct
 {
 private:
-	std::string type;
+	llvm::StructType* type;
 public:
 	Struct(std::vector<std::string> types);
-	const std::string& get_type() const;
+	llvm::StructType* get_type() const;
 };
 

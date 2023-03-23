@@ -1,15 +1,20 @@
 #include "Struct.h"
+#include "GeneratorHelper.h"
+#include "Common.h"
 
-Struct::Struct(std::vector<std::string> types)
+using namespace llvm;
+
+Struct::Struct(std::vector<std::string> string_types)
 {
-	for (const std::string& type : types)
-	{
-		this->type += type + ",";
-	}
-	type = type.substr(0, type.size() - 1); //Remove last comma
+    std::vector<Type*> types;
+    for (std::string& type : string_types)
+    {
+        types.push_back(GeneratorHelper::get_type_from_string(type));
+    }
+    type = StructType::get(get_context(), types);
 }
 
-const std::string& Struct::get_type() const
+StructType* Struct::get_type() const
 {
 	return type;
 }

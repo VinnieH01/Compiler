@@ -9,16 +9,13 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/IRBuilder.h>
 #include "Struct.h"
+#include <stack>
 
 namespace GeneratorHelper
 {
     llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name, llvm::Type* type);
-    llvm::GlobalVariable* create_global_variable(llvm::Module* module, const std::string& variable_name, llvm::Type* type, llvm::Constant* init_val);
-
     using binary_operation_fn = std::function<llvm::Value* (llvm::IRBuilder<>*, llvm::Value*, llvm::Value*)>;
-    binary_operation_fn get_binary_operation_fn(llvm::LLVMContext* context, llvm::Type* type, const std::string& operation);
-
-    llvm::Value* get_variable(llvm::Module* module, std::map<std::string, llvm::AllocaInst*>& local_variables, const std::string& variable_name); 
-
-    llvm::Type* get_type_from_string(llvm::LLVMContext* context, const std::map<std::string, Struct>&, const std::string& type);
+    binary_operation_fn get_binary_operation_fn(llvm::Type* type, const std::string& operation);
+    llvm::Type* get_type_from_string(const std::map<std::string, Struct>&, const std::string& type);
+    llvm::Type* get_type_from_string(const std::string& type);
 }

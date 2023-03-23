@@ -167,20 +167,6 @@ class Lexer():
             self.advance()
         self.advance() # Skip the last "
         return Token(TokenType.LITERAL, {"data_type": "string", "value": result})
-    
-    '''def tokenize_struct(self):
-        result = ""
-        self.advance() # Skip the first {
-        while self.current_char != None and self.current_char != '}':
-            if self.current_char.isspace():
-                self.advance() # Skip whitespace between types in struct
-            elif self.current_char.isalnum() or self.current_char == ',':
-                result += self.current_char
-                self.advance()
-            else:
-                raise Exception(f"Unknown char in struct: {self.current_char}")
-        self.advance() # Skip the last }
-        return Token(TokenType.TYPE, {"data_type": result})'''
 
 
 
