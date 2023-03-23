@@ -13,6 +13,7 @@
 #include "third-party/json.hpp"
 #include "Struct.h"
 #include "ScopeManager.h"
+#include "FunctionSignatureManager.h"
 
 class IRGenerator
 {
@@ -25,6 +26,7 @@ private:
     //std::stack<std::map<std::string, llvm::AllocaInst*>> named_values;
     std::map<std::string, Struct> named_types;
     ScopeManager scope_manager;
+    FunctionSignatureManager fsm;
 
     //This is used to keep track of where a "break" or "continue" keyword should branch to.
     std::stack<std::tuple<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack;

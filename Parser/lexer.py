@@ -28,6 +28,7 @@ class TokenType:
     COLON = "COLON"
     AS = "AS"
     STRUCT = "STRUCT"
+    EXTERN = "EXTERN"
 
 class Token:
     def __init__(self, type, meta):
@@ -72,6 +73,7 @@ class Lexer():
             "as": TokenType.AS,
             "while": TokenType.WHILE,
             "struct": TokenType.STRUCT,
+            "extern": TokenType.EXTERN,
         }
         self.operator_constituents = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "[", "]"] 
         self.operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "<-", "->", ":=", "[", "]"] 

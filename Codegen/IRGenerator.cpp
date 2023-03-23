@@ -18,6 +18,8 @@ IRGenerator::IRGenerator(const std::unique_ptr<Module>& mdl, const std::unique_p
     function_pass_manager(fpm), 
     scope_manager(module.get())
 {
+    //We never want to mangle the main function
+    fsm.add_unmangled_name("main", {});
 }
 
 Value* IRGenerator::visit_node(const json& node)
@@ -226,11 +228,11 @@ Value* IRGenerator::visit_return_node(const json& node)
     return builder->CreateRet(ret_val);
 }
 
-Function* IRGenerator::visit_prototype_node(const json& data)
+Function* IRGenerator::visit_prototype_node(const json& node)
 {
-    std::vector<std::string> args = data["args"];
-    std::vector<std::string> arg_types_str = data["arg_types"];
-    std::string name = data["name"];
+    std::vector<std::string> args = node["args"];
+    std::vector<std::string> arg_types_str = node["arg_types"];
+    std::string name = node["name"];
 
     //Generate list of the Type* of each argument
     std::vector<Type*> arg_types;
@@ -240,10 +242,13 @@ Function* IRGenerator::visit_prototype_node(const json& data)
         arg_types.push_back(get_type_from_string(named_types, str));
     }
 
-    Type* return_type = get_type_from_string(named_types, data["ret_type"]);
+    Type* return_type = get_type_from_string(named_types, node["ret_type"]);
     FunctionType* func_type = FunctionType::get(return_type, arg_types, false);
 
-    Function* function = Function::Create(func_type, Function::ExternalLinkage, name, module.get());
+    if (node["is_extern"])
+        fsm.add_unmangled_name(name, arg_types);
+
+    Function* function = Function::Create(func_type, Function::ExternalLinkage, fsm.get_function_name(name, arg_types), module.get());
 
     // Set names for all arguments.
     size_t idx = 0;
@@ -315,22 +320,24 @@ Value* IRGenerator::visit_function_node(const json& node)
 
 Value* IRGenerator::visit_call_node(const json& node)
 {
-    std::string callee_name = node["callee"];
+    std::vector<json> args_data = node["args"];
 
-    // Look up the name in the global module table.
+    std::vector<Value*> arg_values;
+    std::vector<Type*> arg_types;
+    arg_values.reserve(args_data.size());
+    for (size_t i = 0; i < args_data.size(); ++i) 
+    {
+        Value* arg = visit_node(args_data[i]);
+        arg_values.push_back(arg);
+        arg_types.push_back(arg->getType());
+    }
+
+    std::string callee_name = fsm.get_function_name(node["callee"], arg_types);
+
     Function* callee = module->getFunction(callee_name);
 
     if (!callee)
         error("Function does not exist: " + callee_name);
-
-    std::vector<json> args_data = node["args"];
-
-    std::vector<Value*> arg_values;
-    arg_values.reserve(args_data.size());
-    for (size_t i = 0; i < args_data.size(); ++i) 
-    {
-        arg_values.push_back(visit_node(args_data[i]));
-    }
 
     return builder->CreateCall(callee, arg_values);
 }

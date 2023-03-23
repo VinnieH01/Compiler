@@ -71,11 +71,12 @@ class UnaryNode:
         return str(node_dict)
 
 class PrototypeNode:
-    def __init__(self, name, arg_types, args, ret_type):
+    def __init__(self, name, arg_types, args, ret_type, is_extern):
         self.name = name
         self.arg_types = arg_types
         self.args = args
         self.ret_type = ret_type
+        self.is_extern = is_extern
     
     def __repr__(self):
         node_dict = {
@@ -83,13 +84,10 @@ class PrototypeNode:
             "name": self.name,
             "arg_types": self.arg_types,
             "args": self.args,
-            "ret_type": self.ret_type
+            "ret_type": self.ret_type,
+            "is_extern": self.is_extern
         }
-        return str(node_dict)
-        args_str = ""
-        for arg in self.args:
-            args_str += f"{arg} "
-        args_str = args_str[:-1]
+        return str(json.dumps(node_dict))
 
 class FunctionNode:
     def __init__(self, prototype, body):
@@ -445,9 +443,13 @@ class Parser:
     
     def parse_function_declaration(self):
         return_type = ""
+        extern = False
         if(self.current_token.type == TokenType.ACTN):
             return_type = "void"
         self.advance() #Advance past the dec/fn/actn keyword
+        if self.current_token.type == TokenType.EXTERN:
+            extern = True
+            self.advance() #Advance past the extern keyword
         if(self.current_token.type == TokenType.ACTN): #This second check is for the case "dec actn"
             return_type = "void"
             self.advance() #Advance past the actn keyword
@@ -490,7 +492,7 @@ class Parser:
                 raise Exception("Expected return type after function name")
             return_type = self.current_token["data_type"]
             self.advance() #Advance past the return type
-        return PrototypeNode(fn_name, arg_types, args, return_type)
+        return PrototypeNode(fn_name, arg_types, args, return_type, extern)
     
     def parse_function_definition(self):
         fn_prototype = self.parse_function_declaration()
