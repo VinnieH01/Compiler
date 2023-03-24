@@ -1,4 +1,4 @@
-from lexer import Lexer, TokenType, Token
+from lexer import Lexer, TokenType, Token, Preprocessor
 import json
 
 #############################################
@@ -193,26 +193,30 @@ class DereferenceNode:
         return str(node_dict)
 
 class StructInstanceNode:
-    def __init__(self, members):
+    def __init__(self, members, data_type):
         self.members = members
+        self.data_type = data_type
 
     def __repr__(self):
         node_dict = {
             "type": "StructInstance",
-            "members": self.members
+            "members": self.members,
+            "data_type": self.data_type
         }
         return str(node_dict)
 
 class StructDefinitionNode:
-    def __init__(self, name, member_types):
+    def __init__(self, name, member_types, member_names):
         self.name = name
         self.member_types = member_types
+        self.member_names = member_names
 
     def __repr__(self):
         node_dict = {
             "type": "StructDefinition",
             "name": self.name,
-            "member_types": self.member_types
+            "member_types": self.member_types,
+            "member_names": self.member_names
         }
         return str(node_dict)
 
@@ -326,6 +330,9 @@ class Parser:
                 node = self.parse_function_call()
             elif self.peek().type == TokenType().LBRACKET: #This is an index of some sort
                 node = self.parse_index()
+            elif self.peek().type == TokenType.COLON and self.peek(2).type == TokenType.LBRACE: 
+                #This is a struct instance with typename: { ... }
+                node = self.parse_struct_instance()
             else: #If its not followed by anything of relevance then we treat it as a variable reference
                 node = VariableNode(self.current_token["name"])
                 self.advance() #Advance past the identifier
@@ -337,8 +344,6 @@ class Parser:
                 raise Exception("Expected )")
             self.advance() #Advance past the )
             node = expr
-        elif self.current_token.type == TokenType.LBRACE:
-            node = self.parse_struct_instance()
         
         #After we have the node we need to check if its being cast into a type
         if self.current_token.type == TokenType.AS:
@@ -362,26 +367,26 @@ class Parser:
         if self.current_token.type != TokenType.LBRACE:
             raise Exception("Expected { after struct name")
         self.advance() #Advance past the {
-        members = []
+        member_types = []
+        member_names = []
         while self.current_token.type != TokenType.RBRACE:
             if self.current_token.type != TokenType.TYPE:
                 raise Exception("Expected type in struct definition")
-            data_type = self.current_token["data_type"]
+            member_types.append(self.current_token["data_type"])
             self.advance() #Advance past the type
             if self.current_token.type != TokenType.COLON:
                 raise Exception("Expected : in struct definition")
             self.advance() #Advance past the :
             if self.current_token.type != TokenType.IDENTIFIER:
                 raise Exception("Expected identifier in struct definition")
-            member_name = self.current_token["name"]
+            member_names.append(self.current_token["name"])
             self.advance() #Advance past the identifier
-            members.append(data_type) #TODO: Add support name of member
             if self.current_token.type != TokenType.COMMA and self.current_token.type != TokenType.RBRACE:
                 raise Exception("Expected , or in struct definition")
             if self.current_token.type == TokenType.COMMA:
                 self.advance() 
         self.advance() #Advance past the }
-        return StructDefinitionNode(struct_name, members)
+        return StructDefinitionNode(struct_name, member_types, member_names)
 
     def parse_index(self):
         variable = VariableNode(self.current_token["name"])
@@ -397,6 +402,13 @@ class Parser:
         return BinaryNode(variable, "[]", index)
 
     def parse_struct_instance(self):
+        data_type = self.current_token["name"]
+        self.advance() #Advance past the identifier
+        if self.current_token.type != TokenType.COLON:
+            raise Exception(f"Expected : but got {self.current_token}")
+        self.advance() #Advance past the :
+        if self.current_token.type != TokenType.LBRACE:
+            raise Exception(f"Expected {{ but got {self.current_token}")
         self.advance() #Advance past the {
         members = []
         while self.current_token.type != TokenType.RBRACE:
@@ -406,7 +418,7 @@ class Parser:
             if self.current_token.type == TokenType.COMMA:
                 self.advance()
         self.advance() #Advance past the }
-        return StructInstanceNode(members)
+        return StructInstanceNode(members, data_type)
 
     def parse_explicit_literal(self):
         data_type = self.current_token["data_type"]
@@ -611,7 +623,7 @@ if(len(sys.argv) != 2):
 
 code = open(sys.argv[1], "r").read()
 
-tokens = Lexer(code).tokenize()
+tokens = Preprocessor(sys.argv[1]).preprocess() #Lexer(code).tokenize()
 ast = Parser(tokens).parse()
 
 # Generate an AST string for the codegen

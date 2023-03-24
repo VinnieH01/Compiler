@@ -30,11 +30,9 @@ int main(int argc, char* argv[])
     }
 
     std::unique_ptr<Module> module;
-    std::unique_ptr<IRBuilder<>> builder;
     std::unique_ptr<legacy::FunctionPassManager> fpm;
 
     module = std::make_unique<Module>("Module", get_context());
-    builder = std::make_unique<IRBuilder<>>(get_context());
 
     fpm = std::make_unique<legacy::FunctionPassManager>(module.get());
 
@@ -51,7 +49,7 @@ int main(int argc, char* argv[])
 
     fpm->doInitialization();
 
-    IRGenerator gen(module, builder, fpm);
+    IRGenerator gen(module, fpm);
 
     std::ifstream f(argv[1]);
     std::vector<json> data = json::parse(f);

@@ -30,6 +30,8 @@ class TokenType:
     STRUCT = "STRUCT"
     EXTERN = "EXTERN"
 
+    PREPROCESSOR = "PREPROCESSOR"
+
 class Token:
     def __init__(self, type, meta):
         self.type = type
@@ -116,6 +118,8 @@ class Lexer():
                 tokens.append(self.tokenize_number())
             elif self.current_char == '"':
                 tokens.append(self.tokenize_string())
+            elif self.current_char == "#":
+                tokens.append(self.tokenize_preprocessor_directive())
             else:
                 raise Exception(f"Unknown char: {self.current_char}")
         tokens.append(Token(TokenType.EOF, {}))
@@ -169,6 +173,44 @@ class Lexer():
             self.advance()
         self.advance() # Skip the last "
         return Token(TokenType.LITERAL, {"data_type": "string", "value": result})
+    
+    def tokenize_preprocessor_directive(self):
+        result = ""
+        self.advance() # Skip the #
+        while self.current_char != None and self.current_char.isspace() == False:
+            result += self.current_char
+            self.advance()
+        return Token(TokenType.PREPROCESSOR, {"directive": result})
+
+class Preprocessor:
+    def __init__(self, file):
+        self.file = file
+        self.tokens = []
+    
+    def preprocess(self):
+        #read the file
+        with open(self.file, "r") as f:
+            text = f.read()
+        #tokenize the file
+        lexer = Lexer(text)
+        self.tokens = lexer.tokenize()
+        
+        new_tokens = []
+        i = 0
+        while i < len(self.tokens):
+            if self.tokens[i].type == TokenType.PREPROCESSOR:
+                if self.tokens[i]["directive"] == "include":
+                    if self.tokens[i+1].type == TokenType.LITERAL:
+                        included_file = self.tokens[i+1]["value"]
+                        pp = Preprocessor(included_file)
+                        new_tokens += pp.preprocess()[:-1] # Skip the EOF token
+                        i += 2 # Skip the include and the string literal
+                        continue
+            new_tokens.append(self.tokens[i])
+            i += 1
+
+        return new_tokens
+
 
 
 

@@ -68,7 +68,7 @@ namespace GeneratorHelper
         error("This binary operator cannot be applied to the supplied values: " + operation);
     }
 
-    Type* get_type_from_string(const std::map<std::string, Struct>& named_types, const std::string& type)
+    Type* get_type_from_string(const std::string& type)
     {
         static const std::map<std::string, Type*>& type_names
         {
@@ -87,15 +87,9 @@ namespace GeneratorHelper
         if (auto type_ = type_names.find(type); type_ != type_names.end())
             return type_->second;
 
-        if (auto struct_type = named_types.find(type); struct_type != named_types.end())
-            return struct_type->second.get_type();
+        if (auto struct_type = StructType::getTypeByName(get_context(), type))
+            return struct_type;
 
         error("Invalid type: " + type);
-    }
-
-    Type* get_type_from_string(const std::string& type)
-    {
-        static const std::map<std::string, Struct>& no_named {};
-        return get_type_from_string(no_named, type);
     }
 }

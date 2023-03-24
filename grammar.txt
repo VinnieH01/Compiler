@@ -39,7 +39,7 @@ unary           -> ("+"|"-"|"!"|"&") unary
 
 primary         -> (NUMBER|IDENTIFIER) 
                 -> TYPE|IDENTIFIER COLON LITERAL
-                -> "{" (expr ",")* "}" #Struct
+                -> IDENTIFIER COLON "{" (expr ",")* "}" #Struct
                 -> LPAR expr RPAR
                 -> IDENTIFIER "[" INTEGER "]" #Getting struct member
                 -> IDENTIFIER LPAR (expr,)* RPAR #Function call

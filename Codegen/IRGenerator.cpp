@@ -11,10 +11,10 @@ using namespace nlohmann;
 using namespace llvm;
 using namespace GeneratorHelper;
 
-IRGenerator::IRGenerator(const std::unique_ptr<Module>& mdl, const std::unique_ptr<IRBuilder<>>& bldr, const std::unique_ptr<legacy::FunctionPassManager>& fpm)
+IRGenerator::IRGenerator(const std::unique_ptr<Module>& mdl, const std::unique_ptr<legacy::FunctionPassManager>& fpm)
     : 
     module(mdl), 
-    builder(bldr),
+    builder(std::make_unique<IRBuilder<>>(get_context())),
     function_pass_manager(fpm), 
     scope_manager(module.get())
 {
@@ -26,22 +26,26 @@ Value* IRGenerator::visit_node(const json& node)
 {
     static std::map<std::string, std::function<Value* (const json&)>> dispatch
     {
-        { "Function", [this](const json& j) { return visit_function_node(j); } },
-        { "Prototype", [this](const json& j) { return visit_prototype_node(j); } },
-        { "Binary", [this](const json& j) { return visit_binary_node(j); } },
-        { "Literal", [this](const json& j) { return visit_literal_node(j); } },
-        { "Variable", [this](const json& j) { return visit_variable_node(j); } },
-        { "Call", [this](const json& j) { return visit_call_node(j); } },
-        { "Unary", [this](const json& j) { return visit_unary_node(j); } },
-        { "Return", [this](const json& j) { return visit_return_node(j); } },
-        { "Let", [this](const json& j) { return visit_let_node(j); } },
-        { "If", [this](const json& j) { return visit_if_node(j); }},
-        { "Loop", [this](const json& j) { return visit_loop_node(j); }},
-        { "LoopTermination", [this](const json& j) { return visit_loop_termination_node(j); }},
-        { "Cast", [this](const json& j) { return visit_cast_node(j); }},
-        { "Dereference", [this](const json& j) { return visit_dereference_node(j); }},
-        { "StructInstance", [this](const json& j) { return visit_struct_instance_node(j); }},
-        { "StructDefinition", [this](const json& j) { return visit_struct_definition_node(j); }}
+        #define visit_fn(type, f) { type, [this](const json& j) { return f(j); }},
+
+        visit_fn("Function", visit_function_node)
+        visit_fn("Prototype", visit_prototype_node) 
+        visit_fn("Binary", visit_binary_node)
+        visit_fn("Literal", visit_literal_node)
+        visit_fn("Variable", visit_variable_node) 
+        visit_fn("Call", visit_call_node) 
+        visit_fn("Unary", visit_unary_node) 
+        visit_fn("Return", visit_return_node) 
+        visit_fn("Let", visit_let_node) 
+        visit_fn("If", visit_if_node) 
+        visit_fn("Loop", visit_loop_node) 
+        visit_fn("LoopTermination", visit_loop_termination_node) 
+        visit_fn("Cast", visit_cast_node) 
+        visit_fn("Dereference", visit_dereference_node) 
+        visit_fn("StructInstance", visit_struct_instance_node) 
+        visit_fn("StructDefinition", visit_struct_definition_node) 
+
+        #undef visit_fn
     };
 
     if (auto func = dispatch.find(node["type"]); func != dispatch.end()) 
@@ -92,7 +96,7 @@ Value* IRGenerator::visit_variable_node(const json& node)
 Value* IRGenerator::visit_let_node(const json& node)
 {
     Value* value = visit_node(node["value"]);
-    Type* type = get_type_from_string(named_types, node["data_type"]);
+    Type* type = get_type_from_string(node["data_type"]);
     std::string variable_name = node["name"];
 
     if (type != value->getType())
@@ -100,7 +104,7 @@ Value* IRGenerator::visit_let_node(const json& node)
     
     if (scope_manager.is_global_scope())
     {
-        return scope_manager.create_global_variable(node["name"], type, cast<Constant>(value));
+        return scope_manager.create_global_variable(node["name"], type, value);
     }
 
     Function* function = builder->GetInsertBlock()->getParent();
@@ -234,15 +238,14 @@ Function* IRGenerator::visit_prototype_node(const json& node)
     std::vector<std::string> arg_types_str = node["arg_types"];
     std::string name = node["name"];
 
-    //Generate list of the Type* of each argument
     std::vector<Type*> arg_types;
     arg_types.reserve(arg_types_str.size());
     for (const std::string& str : arg_types_str) 
     {
-        arg_types.push_back(get_type_from_string(named_types, str));
+        arg_types.push_back(get_type_from_string(str));
     }
 
-    Type* return_type = get_type_from_string(named_types, node["ret_type"]);
+    Type* return_type = get_type_from_string(node["ret_type"]);
     FunctionType* func_type = FunctionType::get(return_type, arg_types, false);
 
     if (node["is_extern"])
@@ -470,7 +473,7 @@ Value* IRGenerator::visit_cast_node(const json& node)
 {
     Value* before_cast = visit_node(node["value"]);
     Type* type_before = before_cast->getType();
-    Type* type_after = get_type_from_string(named_types, node["data_type"]);
+    Type* type_after = get_type_from_string(node["data_type"]);
 
     //If the types are the same we don't need to perform a cast
     if (type_before == type_after) return before_cast;
@@ -507,33 +510,30 @@ Value* IRGenerator::visit_dereference_node(const json& node)
     if (!variable->getType()->isPointerTy())
         error("Cannot dereference non pointer: " + (std::string)node["variable"]["name"]);
 
-    return builder->CreateLoad(get_type_from_string(named_types, node["data_type"]), variable);
+    return builder->CreateLoad(get_type_from_string(node["data_type"]), variable);
 }
 
-Value* IRGenerator::visit_struct_instance_node(const json& data)
+Value* IRGenerator::visit_struct_instance_node(const json& node)
 {
     if (scope_manager.is_global_scope())
         error("Can only create struct in function"); //For now we cant declare global structs. They have to be pointers
-    
+
     Function* func = builder->GetInsertBlock()->getParent();
 
-    const json& member_nodes = data["members"];
+    const json& member_nodes = node["members"];
     std::vector<Value*> members;
-    std::vector<Type*> member_types;
 
-    for (const json& node : member_nodes) 
+    for (const json& node : member_nodes)
     {
         Value* member = visit_node(node);
         members.push_back(member);
-        member_types.push_back(member->getType());
     }
 
-    //First generate the struct type to be {member1.type, member2.type ...} and alloca one such struct
-    auto* struct_type = StructType::get(get_context(), member_types);
+    auto* struct_type = get_type_from_string(node["data_type"]);
     AllocaInst* struct_alloc = create_alloca_at_top(func, "struct", struct_type);
-    
+
     //Then get pointers to each member of the struct and set the value at that pointer to be the value of the member we are initializing it to
-    for (unsigned i = 0; i < members.size(); ++i) 
+    for (unsigned i = 0; i < members.size(); ++i)
     {
         Value* ptr_to_member = builder->CreateStructGEP(struct_type, struct_alloc, i);
         builder->CreateStore(members[i], ptr_to_member);
@@ -545,11 +545,11 @@ Value* IRGenerator::visit_struct_instance_node(const json& data)
 
 Value* IRGenerator::visit_struct_definition_node(const json& node)
 {
-    std::vector<std::string> types;
+    std::vector<Type*> types;
     for (std::string type : node["member_types"])
     {
-        types.push_back(type);
+        types.push_back(get_type_from_string(type));
     }
-    named_types.insert({ node["name"], { types } });
+    StructType::create(get_context(), types, (std::string)node["name"]);
     return nullptr;
 }
