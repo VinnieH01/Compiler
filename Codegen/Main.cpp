@@ -16,8 +16,10 @@
 #include <llvm/Transforms/Utils.h>
 
 #include "third-party/json.hpp"
-#include "IRGenerator.h"
+#include "CodegenVisitor.h"
 #include "Common.h"
+
+#include "ASTFromJson.h"
 
 using namespace llvm;
 using namespace nlohmann;
@@ -47,16 +49,20 @@ int main(int argc, char* argv[])
     // Simplify the control flow graph (deleting unreachable blocks, etc).
     fpm->add(createCFGSimplificationPass());
 
-    fpm->doInitialization();
+    fpm->add(createDeadCodeEliminationPass());
 
-    IRGenerator gen(module, fpm);
+    fpm->doInitialization();
 
     std::ifstream f(argv[1]);
     std::vector<json> data = json::parse(f);
 
-    for (const json& data0 : data)
+    std::vector<std::unique_ptr<ASTNode>> nodes = create_AST(data);
+
+    CodegenVisitor gen(module, fpm);
+
+    for (const auto& node : nodes)
     {
-        gen.visit_node(data0);
+        node->accept(gen);
     }
 
 	module->print(outs(), nullptr);

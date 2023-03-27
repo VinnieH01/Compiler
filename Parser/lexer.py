@@ -1,5 +1,3 @@
-import re
-
 class TokenType:
     DEC = "DEC"
     FN = "FN"
@@ -77,8 +75,8 @@ class Lexer():
             "struct": TokenType.STRUCT,
             "extern": TokenType.EXTERN,
         }
-        self.operator_constituents = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "[", "]"] 
-        self.operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "<-", "->", ":=", "[", "]"] 
+        self.operator_constituents = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "[", "]", "."] 
+        self.operators = ["+", "-", "*", "(", ")", ";", ",", "{", "}", "=", ">", "<", ":", "!", "&", "|", "<-", "->", ":=", "[", "]", "."] 
         self.types = {
             "bool": "bool",
             "i8": "i8",

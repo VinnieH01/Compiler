@@ -2,8 +2,10 @@
 #include "Common.h"
 
 #include <sstream>
+#include <unordered_set>
 
 using namespace llvm;
+using namespace nlohmann;
 
 namespace GeneratorHelper
 {
@@ -19,7 +21,7 @@ namespace GeneratorHelper
     {
         #define binary_operation_lambda(operation) [](IRBuilder<>* builder, Value* lhs, Value* rhs) { return builder->operation(lhs, rhs); }
 
-        static const std::map<std::string, binary_operation_fn>& integer_operations
+        static const std::unordered_map<std::string, binary_operation_fn>& integer_operations
         {
             {"+", binary_operation_lambda(CreateAdd)},
             {"-", binary_operation_lambda(CreateSub)},
@@ -29,7 +31,7 @@ namespace GeneratorHelper
             {"=", binary_operation_lambda(CreateICmpEQ)}
         };
 
-        static const std::map<std::string, binary_operation_fn>& float_operations
+        static const std::unordered_map<std::string, binary_operation_fn>& float_operations
         {    
             {"+", binary_operation_lambda(CreateFAdd)},
             {"-", binary_operation_lambda(CreateFSub)},
@@ -39,7 +41,7 @@ namespace GeneratorHelper
             {"=", binary_operation_lambda(CreateFCmpUEQ)}
         };
 
-        static const std::map<std::string, binary_operation_fn>& bool_operations
+        static const std::unordered_map<std::string, binary_operation_fn>& bool_operations
         {
             {"&", binary_operation_lambda(CreateAnd)},
             {"|", binary_operation_lambda(CreateOr)}
@@ -47,7 +49,7 @@ namespace GeneratorHelper
 
         #undef binary_operation_lambda
 
-        static const std::map<Type*, std::map<std::string, binary_operation_fn>>& type_operation
+        static const std::unordered_map<Type*, std::unordered_map<std::string, binary_operation_fn>>& type_operation
         {
             {Type::getInt1Ty(get_context()), bool_operations},
             {Type::getInt8Ty(get_context()), integer_operations},
@@ -70,7 +72,7 @@ namespace GeneratorHelper
 
     Type* get_type_from_string(const std::string& type)
     {
-        static const std::map<std::string, Type*>& type_names
+        static const std::unordered_map<std::string, Type*>& type_names
         {
             {"void", Type::getVoidTy(get_context())},
             {"bool", Type::getInt1Ty(get_context())},
@@ -91,5 +93,16 @@ namespace GeneratorHelper
             return struct_type;
 
         error("Invalid type: " + type);
+    }
+
+    bool is_control_flow_terminator(const ASTNode* const node)
+    {
+        static const std::unordered_set<std::string> termination_nodes
+        {
+            "Return",
+            "LoopTermination"
+        };
+
+        return termination_nodes.count(node->get_type()) > 0;
     }
 }

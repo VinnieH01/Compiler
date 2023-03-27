@@ -155,3 +155,7 @@ c
 .vscode/settings.json
 Parser/oldlexer.py
 bob
+Parser/old/oldlexer.py
+Parser/old/oldparser.py
+Codegen/IRGenerator.cpp
+Codegen/IRGenerator.h

@@ -229,6 +229,7 @@ class Parser:
         self.tokens = tokens
         self.index = 0
         self.current_token = self.tokens[0]
+        self.saved_index = 0
     
     def advance(self):
         self.index += 1
@@ -239,6 +240,13 @@ class Parser:
         if self.index + n < len(self.tokens):
             return self.tokens[self.index + n]
         return None
+    
+    def save_index(self):
+        self.saved_index = self.index
+    
+    def load_index(self):
+        self.index = self.saved_index
+        self.current_token = self.tokens[self.index]
 
     def parse(self):
         statements = []
@@ -264,10 +272,7 @@ class Parser:
         return statements
 
     def parse_expression(self):
-        return self.parse_pointee_assignment()
-    
-    def parse_pointee_assignment(self):
-        return self.parse_binary_expression(self.parse_logic, [":="])
+        return self.parse_logic()
 
     #Binary boolean logic &, | etc.
     def parse_logic(self):
@@ -344,6 +349,16 @@ class Parser:
                 raise Exception("Expected )")
             self.advance() #Advance past the )
             node = expr
+        else:
+            raise Exception(f"Expected primary but got {self.current_token}")
+        
+        if self.current_token.type == TokenType.OPERATOR and self.current_token["operator"] == ".":
+            # Struct field access
+            self.advance() #Advance past the .
+            if self.current_token.type != TokenType.IDENTIFIER:
+                raise Exception("Expected identifier after . in field access")
+            node = BinaryNode(node, ".", VariableNode(self.current_token["name"]))
+            self.advance() #Advance past the identifier
         
         #After we have the node we need to check if its being cast into a type
         if self.current_token.type == TokenType.AS:
@@ -357,7 +372,7 @@ class Parser:
             return node
         
         raise Exception(f"Expected primary but got {self.current_token}")
-    
+
     def parse_struct_definition(self):
         self.advance() #Advance past the struct keyword
         if self.current_token.type != TokenType.IDENTIFIER:
@@ -370,9 +385,10 @@ class Parser:
         member_types = []
         member_names = []
         while self.current_token.type != TokenType.RBRACE:
-            if self.current_token.type != TokenType.TYPE:
-                raise Exception("Expected type in struct definition")
-            member_types.append(self.current_token["data_type"])
+            if self.current_token.type == TokenType.TYPE:
+                member_types.append(self.current_token["data_type"])
+            elif self.current_token.type == TokenType.IDENTIFIER:
+                member_types.append(self.current_token["name"])
             self.advance() #Advance past the type
             if self.current_token.type != TokenType.COLON:
                 raise Exception("Expected : in struct definition")
@@ -603,7 +619,19 @@ class Parser:
                 statements.append(LoopTerminationNode(self.current_token.type == TokenType.BREAK))
                 self.advance() #Advance past the break/continue keyword
             else:
-                statements.append(self.parse_expression())
+                # Checks for pattern (primary := ...)
+                pointee_assignment_pattern = self.match_pattern([
+                        self.parse_primary, 
+                        lambda: self.current_token.type == TokenType.OPERATOR and self.current_token["operator"] == ":="
+                    ])
+                if pointee_assignment_pattern[0]:
+                    self.advance() #Advance past the := operator
+                    # [1][0] is the result of parse_primary
+                    statements.append(BinaryNode(pointee_assignment_pattern[1][0], ":=", self.parse_expression()))
+                else:
+                    # If it wasnt a pointee assignment we need to restore the index
+                    self.load_index()
+                    statements.append(self.parse_expression())
                 
             if self.current_token.type != TokenType.SEMICOLON:
                 raise Exception(f"Expected ; after expression but got {self.current_token}")
@@ -614,6 +642,20 @@ class Parser:
     def parse_return(self):
         self.advance() # Advance past the ret keyword
         return ReturnNode(self.parse_expression())
+
+    def match_pattern(self, operations):
+        self.save_index()
+        results = []
+        for operation in operations:
+            try:
+                results.append(operation())
+            except Exception as e:
+                self.load_index()
+                return (False, None)
+            if results[-1] == False:
+                self.load_index()
+                return (False, None)
+        return (True, results)
 
 import sys
 

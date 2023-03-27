@@ -20,11 +20,11 @@ termination     -> RET expr
 
 let             -> LET TYPE|IDENTIFIER COLON IDENTIFIER ("<-") expr
 
+pointee_assignment -> primary (":=") expr
+
 assignment      -> IDENTIFIER ("<-") expr
 
-expr            -> pointee_assignment
-
-pointee_assignment -> comparison (":=") comparison #Setting pointee value
+expr            -> logic
 
 logic           -> comparison (("&"|"|") comparison)*
 
@@ -44,4 +44,5 @@ primary         -> (NUMBER|IDENTIFIER)
                 -> IDENTIFIER "[" INTEGER "]" #Getting struct member
                 -> IDENTIFIER LPAR (expr,)* RPAR #Function call
                 -> TYPE|IDENTIFIER ("<-") IDENTIFIER #Dereference
+                -> primary (".") IDENTIFIER
                 -> primary AS TYPE
