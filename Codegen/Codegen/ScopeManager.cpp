@@ -1,11 +1,11 @@
 #include "ScopeManager.h"
-#include "Common.h"
+#include "../Common.h"
 
 #include <llvm/IR/Module.h>
 
 using namespace llvm;
 
-ScopeManager::ScopeManager(Module* module)
+ScopeManager::ScopeManager(Module& module)
 	: module(module)
 {
 }
@@ -24,10 +24,10 @@ GlobalVariable* ScopeManager::create_global_variable(const std::string& name, ll
         error("Can only initialize global variable with a constant");
 
     //This includes other types of values not just global variables (such as function names).
-    if (module->getNamedValue(name))
+    if (module.getNamedValue(name))
         error("Cannot redefine symbol: " + name);
 
-    return new GlobalVariable(*module, type, false, GlobalValue::ExternalLinkage, cast<Constant>(init_val), name);
+    return new GlobalVariable(module, type, false, GlobalValue::ExternalLinkage, cast<Constant>(init_val), name);
 }
 
 void ScopeManager::push_scope()
@@ -45,7 +45,7 @@ bool ScopeManager::is_global_scope()
     return local_variables.size() == 0;
 }
 
-Value* ScopeManager::get_variable(const std::string& name)
+Value* ScopeManager::get_variable_allocation(const std::string& name)
 {
     //We need a copy because of the pop() method.
     auto local_variables_cpy = local_variables;
@@ -58,7 +58,7 @@ Value* ScopeManager::get_variable(const std::string& name)
         local_variables_cpy.pop();
     }
 
-    if (auto global_var = module->getNamedGlobal(name))
+    if (auto global_var = module.getNamedGlobal(name))
         return global_var;
 
     error("Variable does not exist: " + name);

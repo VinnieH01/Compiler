@@ -41,7 +41,6 @@ primary         -> (NUMBER|IDENTIFIER)
                 -> TYPE|IDENTIFIER COLON LITERAL
                 -> IDENTIFIER COLON "{" (expr ",")* "}" #Struct
                 -> LPAR expr RPAR
-                -> IDENTIFIER "[" INTEGER "]" #Getting struct member
                 -> IDENTIFIER LPAR (expr,)* RPAR #Function call
                 -> TYPE|IDENTIFIER ("<-") IDENTIFIER #Dereference
                 -> primary (".") IDENTIFIER

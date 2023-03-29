@@ -1,9 +1,8 @@
 #pragma once
 
-#include "third-party/json.hpp"
+#include "../third-party/json.hpp"
 
-#include "CodegenVisitor.h"
-#include <llvm/IR/Value.h>
+#include "ASTVisitor.h"
 
 #define GETTER(value, type) inline type get_##value##() const { return data.at(#value); }
 #define TMPLGETTER(value) template<typename T> inline T get_##value##() const { return (T)data.at(#value); }
@@ -16,7 +15,8 @@ public:
 
 	GETTER(type, std::string)
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const = 0;
+	template<typename T>
+	T accept(ASTVisitor<T>& v) const;
 
 protected:
 	const nlohmann::json data;
@@ -29,7 +29,9 @@ public:
 	TMPLGETTER(value)
 	GETTER(name, std::string)
 	GETTER(data_type, std::string)
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_literal_node(*this);
 	};
@@ -40,7 +42,9 @@ class VariableNode : public ASTNode
 public:
 	using ASTNode::ASTNode;
 	GETTER(name, std::string)
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_variable_node(*this);
 	};
@@ -59,7 +63,8 @@ public:
 	inline const std::unique_ptr<ASTNode>& get_left() const { return left; }
 	inline const std::unique_ptr<ASTNode>& get_right() const { return right; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_binary_node(*this);
 	};
@@ -77,7 +82,8 @@ public:
 	GETTER(callee, std::string)
 	inline const std::vector<std::unique_ptr<ASTNode>>& get_args() const { return args; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_call_node(*this);
 	};
@@ -96,7 +102,8 @@ public:
 
 	inline const std::unique_ptr<ASTNode>& get_operand() const { return operand; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_unary_node(*this);
 	};
@@ -115,7 +122,8 @@ public:
 	GETTER(arg_types, std::vector<std::string>)
 	GETTER(args, std::vector<std::string>)
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_prototype_node(*this);
 	};
@@ -132,7 +140,8 @@ public:
 	inline const PrototypeNode* const get_prototype() const  { return (PrototypeNode*)prototype.get(); }
 	inline const std::vector<std::unique_ptr<ASTNode>>& get_body() const { return body; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_function_node(*this);
 	};
@@ -150,7 +159,8 @@ public:
 
 	inline const std::unique_ptr<ASTNode>& get_value() const { return value; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_return_node(*this);
 	};
@@ -170,7 +180,8 @@ public:
 
 	inline const std::unique_ptr<ASTNode>& get_value() const { return value; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_let_node(*this);
 	};
@@ -191,7 +202,8 @@ public:
 	inline const std::vector<std::unique_ptr<ASTNode>>& get_then() const { return then; }
 	inline const std::vector<std::unique_ptr<ASTNode>>& get_else() const { return else_; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_if_node(*this);
 	};
@@ -210,7 +222,8 @@ public:
 
 	inline const std::vector<std::unique_ptr<ASTNode>>& get_body() const { return body; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_loop_node(*this);
 	};
@@ -224,7 +237,8 @@ public:
 	using ASTNode::ASTNode;
 	GETTER(break, bool)
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_loop_termination_node(*this);
 	};
@@ -241,7 +255,8 @@ public:
 
 	inline const std::unique_ptr<ASTNode>& get_value() const { return value; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_cast_node(*this);
 	};
@@ -260,7 +275,8 @@ public:
 
 	inline const std::unique_ptr<ASTNode>& get_variable() const { return variable; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_dereference_node(*this);
 	};
@@ -279,7 +295,8 @@ public:
 
 	inline const std::vector<std::unique_ptr<ASTNode>>& get_members() const { return members; }
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_struct_instance_node(*this);
 	};
@@ -296,7 +313,8 @@ public:
 	GETTER(member_types, std::vector<std::string>)
 	GETTER(member_names, std::vector<std::string>)
 
-	inline virtual llvm::Value* accept(CodegenVisitor& v) const override
+	template<typename T>
+	inline T accept(ASTVisitor<T>& v) const
 	{
 		return v.visit_struct_definition_node(*this);
 	};
@@ -304,3 +322,35 @@ public:
 
 #undef GETTER
 #undef TMPLGETTER
+
+template<typename T>
+inline T ASTNode::accept(ASTVisitor<T>& v) const
+{
+	//This is to allow the ASTVisitor to have a templated return type, as virtual methods cant be templated
+	//ASTNode::accept cannot be virtual. Instead we need some sort of dispatch to handle the call
+
+	//TODO: Possible alternative solution is to return void and make the visitor subclass itself
+	//Save the value it wants to "return" or if template functionality is desired 
+	//https://stackoverflow.com/a/65287099 can be a solution
+
+	#define dispatch(node_type) if (get_type() == #node_type) return static_cast<const node_type##Node*>(this)->accept(v)
+
+	dispatch(Literal);
+	dispatch(Function);
+	dispatch(Prototype);
+	dispatch(Binary);
+	dispatch(Variable);
+	dispatch(Call);
+	dispatch(Unary);
+	dispatch(Return);
+	dispatch(Let);
+	dispatch(If);
+	dispatch(Loop);
+	dispatch(LoopTermination);
+	dispatch(Cast);
+	dispatch(Dereference);
+	dispatch(StructInstance);
+	dispatch(StructDefinition);
+
+	#undef dispatch
+}

@@ -333,8 +333,6 @@ class Parser:
             #If the next token is not a ( it is a function call
             if self.peek().type == TokenType.LPAR:
                 node = self.parse_function_call()
-            elif self.peek().type == TokenType().LBRACKET: #This is an index of some sort
-                node = self.parse_index()
             elif self.peek().type == TokenType.COLON and self.peek(2).type == TokenType.LBRACE: 
                 #This is a struct instance with typename: { ... }
                 node = self.parse_struct_instance()
@@ -403,19 +401,6 @@ class Parser:
                 self.advance() 
         self.advance() #Advance past the }
         return StructDefinitionNode(struct_name, member_types, member_names)
-
-    def parse_index(self):
-        variable = VariableNode(self.current_token["name"])
-        self.advance() #Advance past the identifier
-        if self.current_token.type != TokenType.LBRACKET:
-            raise Exception("Expected [ in index")
-        self.advance() #Advance past the [
-        index = self.parse_expression()
-        if self.current_token.type != TokenType.RBRACKET:
-            raise Exception("Expected ] in index")
-        self.advance() #Advance past the ]
-        #Indexes are just binary operators between the variable and the index
-        return BinaryNode(variable, "[]", index)
 
     def parse_struct_instance(self):
         data_type = self.current_token["name"]

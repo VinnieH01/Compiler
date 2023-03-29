@@ -16,10 +16,10 @@
 #include <llvm/Transforms/Utils.h>
 
 #include "third-party/json.hpp"
-#include "CodegenVisitor.h"
+#include "Codegen/CodegenVisitor.h"
 #include "Common.h"
 
-#include "ASTFromJson.h"
+#include "AST/ASTFromJson.h"
 
 using namespace llvm;
 using namespace nlohmann;
@@ -31,45 +31,25 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    std::unique_ptr<Module> module;
-    std::unique_ptr<legacy::FunctionPassManager> fpm;
-
-    module = std::make_unique<Module>("Module", get_context());
-
-    fpm = std::make_unique<legacy::FunctionPassManager>(module.get());
-
-    // Promote allocas to registers.
-    fpm->add(createPromoteMemoryToRegisterPass());
-    // Do simple "peephole" optimizations and bit-twiddling optzns.
-    fpm->add(createInstructionCombiningPass());
-    // Reassociate expressions.
-    fpm->add(createReassociatePass());
-    // Eliminate Common SubExpressions.
-    fpm->add(createGVNPass());
-    // Simplify the control flow graph (deleting unreachable blocks, etc).
-    fpm->add(createCFGSimplificationPass());
-
-    fpm->add(createDeadCodeEliminationPass());
-
-    fpm->doInitialization();
-
     std::ifstream f(argv[1]);
     std::vector<json> data = json::parse(f);
 
-    std::vector<std::unique_ptr<ASTNode>> nodes = create_AST(data);
+    std::vector<std::unique_ptr<ASTNode>> nodes(create_node_list(data));
 
-    CodegenVisitor gen(module, fpm);
+    CodegenVisitor gen;
 
     for (const auto& node : nodes)
     {
         node->accept(gen);
     }
 
-	module->print(outs(), nullptr);
+    const Module& module = gen.get_module();
+
+    module.print(outs(), nullptr);
 
     std::error_code EC;
     raw_fd_ostream OS("module", EC);
-    WriteBitcodeToFile(*module, OS);
+    WriteBitcodeToFile(module, OS);
     OS.flush();
 	
     return 0;
