@@ -1,7 +1,8 @@
 #pragma once
 #include <unordered_map>
 #include <llvm/IR/DerivedTypes.h>
-#include "../Common.h"
+#include "Error/Result.h"
+#include "Error/LangError.hpp"
 
 class StructManager 
 {

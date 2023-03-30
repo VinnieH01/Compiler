@@ -17,7 +17,7 @@
 #include "../AST/ASTNodes.hpp"
 #include "../AST/ASTVisitor.h"
 
-#include "../Common.h"
+#include "Error/ValueResult.h"
 
 class CodegenVisitor : public ASTVisitor<ValueResult>
 {

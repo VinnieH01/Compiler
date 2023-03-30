@@ -17,7 +17,6 @@
 
 #include "third-party/json.hpp"
 #include "Codegen/CodegenVisitor.h"
-#include "Common.h"
 
 #include "AST/ASTFromJson.h"
 

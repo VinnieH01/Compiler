@@ -14,7 +14,7 @@ Result<void, std::shared_ptr<LangError>> ScopeManager::add_local_variable(const 
     if (local_variables.top().count(name))
     {
         return std::static_pointer_cast<LangError>(
-            std::make_shared<SymbolRedeclarationError>(name)
+            std::make_shared<RedeclarationError>(name)
             );
     }
 
@@ -34,7 +34,7 @@ ValueResult ScopeManager::create_global_variable(const std::string& name, llvm::
     if (module.getNamedValue(name))
     {
         return std::static_pointer_cast<LangError>(
-            std::make_shared<SymbolRedeclarationError>(name)
+            std::make_shared<RedeclarationError>(name)
             );
     }
 

@@ -3,7 +3,7 @@
 #include <map>
 #include <string>
 #include <llvm/IR/Instructions.h>
-#include "../Common.h"
+#include "Error/ValueResult.h"
 
 class ScopeManager
 {

@@ -12,7 +12,8 @@
 
 #include "../third-party/json.hpp"
 #include "../AST/ASTNodes.hpp"
-#include "../Common.h"
+#include "Error/Result.h"
+#include "Error/LangError.hpp"
 
 namespace GeneratorHelper
 {

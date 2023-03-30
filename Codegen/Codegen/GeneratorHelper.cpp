@@ -1,8 +1,9 @@
 #include "GeneratorHelper.h"
-#include "../Common.h"
 
 #include <sstream>
 #include <unordered_set>
+
+#include "Context.h"
 
 using namespace llvm;
 using namespace nlohmann;
@@ -70,7 +71,7 @@ namespace GeneratorHelper
                 return builder_fn->second;
         }
 
-        return std::make_shared<LangError>("Binary operator '" + operation + "' cannot be applied to the supplied values");
+        return std::static_pointer_cast<LangError>(std::make_shared<IllegalOperationError>(operation));
     }
 
     Result<Type*, std::shared_ptr<LangError>> get_type_from_string(const std::string& type)
@@ -100,10 +101,10 @@ namespace GeneratorHelper
 
     bool is_control_flow_terminator(const ASTNode* const node)
     {
-        static const std::unordered_set<std::string> termination_nodes
+        static const std::unordered_set<NodeType> termination_nodes
         {
-            "Return",
-            "LoopTermination"
+            NodeType::Return,
+            NodeType::LoopTermination
         };
 
         return termination_nodes.count(node->get_type()) > 0;

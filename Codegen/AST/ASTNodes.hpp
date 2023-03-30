@@ -7,25 +7,49 @@
 #define GETTER(value, type) inline type get_##value##() const { return data.at(#value); }
 #define TMPLGETTER(value) template<typename T> inline T get_##value##() const { return (T)data.at(#value); }
 
+enum class NodeType 
+{
+	Unknown,
+	Literal,
+	Function,
+	Prototype,
+	Binary,
+	Variable,
+	Call,
+	Unary,
+	Return,
+	Let,
+	If,
+	Loop,
+	LoopTermination,
+	Cast,
+	Dereference,
+	StructInstance,
+	StructDefinition
+};
+
 class ASTNode 
 {
 public:
-	ASTNode(const nlohmann::json& data)
-		: data(data) {}
+	ASTNode(const nlohmann::json& data, NodeType type)
+		: data(data) 
+		, type(type) {}
 
-	GETTER(type, std::string)
+	inline const NodeType get_type() const { return type; }
 
 	template<typename T>
 	T accept(ASTVisitor<T>& v) const;
 
 protected:
 	const nlohmann::json data;
+	const NodeType type;
 };
 
 class LiteralNode : public ASTNode 
 {
 public:
-	using ASTNode::ASTNode;
+	LiteralNode(const nlohmann::json& data)
+		: ASTNode(data, NodeType::Literal) {}
 	TMPLGETTER(value)
 	GETTER(name, std::string)
 	GETTER(data_type, std::string)
@@ -40,7 +64,8 @@ public:
 class VariableNode : public ASTNode
 {
 public:
-	using ASTNode::ASTNode;
+	VariableNode(const nlohmann::json& data)
+		: ASTNode(data, NodeType::Variable) {}
 	GETTER(name, std::string)
 
 	template<typename T>
@@ -54,7 +79,7 @@ class BinaryNode : public ASTNode
 {
 public:
 	BinaryNode(const nlohmann::json& data, std::unique_ptr<ASTNode> left, std::unique_ptr<ASTNode> right)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Binary),
 		left(std::move(left)),
 		right(std::move(right)) {}
 
@@ -77,7 +102,7 @@ class CallNode : public ASTNode
 {
 public:
 	CallNode(const nlohmann::json& data, std::vector<std::unique_ptr<ASTNode>> args)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Call),
 		args(std::move(args)) {}
 	GETTER(callee, std::string)
 	inline const std::vector<std::unique_ptr<ASTNode>>& get_args() const { return args; }
@@ -95,7 +120,7 @@ class UnaryNode : public ASTNode
 {
 public:
 	UnaryNode(const nlohmann::json& data, std::unique_ptr<ASTNode> operand)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Unary),
 		operand(std::move(operand)) {}
 
 	GETTER(operator, std::string)
@@ -114,7 +139,8 @@ private:
 class PrototypeNode : public ASTNode
 {
 public:
-	using ASTNode::ASTNode;
+	PrototypeNode(const nlohmann::json& data)
+		: ASTNode(data, NodeType::Prototype) {}
 
 	GETTER(name, std::string)
 	GETTER(ret_type, std::string)
@@ -133,7 +159,7 @@ class FunctionNode : public ASTNode
 {
 public:
 	FunctionNode(const nlohmann::json& data, std::unique_ptr<ASTNode> prototype, std::vector<std::unique_ptr<ASTNode>> body)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Function),
 		prototype(std::move(prototype)),
 		body(std::move(body)) {}
 
@@ -154,7 +180,7 @@ class ReturnNode : public ASTNode
 {
 public:
 	ReturnNode(const nlohmann::json& data, std::unique_ptr<ASTNode> value)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Return),
 		value(std::move(value)) {}
 
 	inline const std::unique_ptr<ASTNode>& get_value() const { return value; }
@@ -172,7 +198,7 @@ class LetNode : public ASTNode
 {
 public:
 	LetNode(const nlohmann::json& data, std::unique_ptr<ASTNode> value)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Let),
 		value(std::move(value)) {}
 
 	GETTER(name, std::string)
@@ -193,7 +219,7 @@ class IfNode : public ASTNode
 {
 public:
 	IfNode(const nlohmann::json& data, std::unique_ptr<ASTNode> condition, std::vector<std::unique_ptr<ASTNode>> then, std::vector<std::unique_ptr<ASTNode>> else_)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::If),
 		then(std::move(then)),
 		else_(std::move(else_)),
 		condition(std::move(condition)) {}
@@ -217,7 +243,7 @@ class LoopNode : public ASTNode
 {
 public:
 	LoopNode(const nlohmann::json& data, std::vector<std::unique_ptr<ASTNode>> body)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Loop),
 		body(std::move(body)) {}
 
 	inline const std::vector<std::unique_ptr<ASTNode>>& get_body() const { return body; }
@@ -234,7 +260,8 @@ private:
 class LoopTerminationNode : public ASTNode
 {
 public:
-	using ASTNode::ASTNode;
+	LoopTerminationNode(const nlohmann::json& data)
+		: ASTNode(data, NodeType::LoopTermination) {}
 	GETTER(break, bool)
 
 	template<typename T>
@@ -248,7 +275,7 @@ class CastNode : public ASTNode
 {
 public:
 	CastNode(const nlohmann::json& data, std::unique_ptr<ASTNode> value)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Cast),
 		value(std::move(value)) {}
 
 	GETTER(data_type, std::string)
@@ -268,7 +295,7 @@ class DereferenceNode : public ASTNode
 {
 public:
 	DereferenceNode(const nlohmann::json& data, std::unique_ptr<ASTNode> variable)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::Dereference),
 		variable(std::move(variable)) {}
 
 	GETTER(data_type, std::string)
@@ -288,7 +315,7 @@ class StructInstanceNode : public ASTNode
 {
 public:
 	StructInstanceNode(const nlohmann::json& data, std::vector<std::unique_ptr<ASTNode>> members)
-		: ASTNode(data),
+		: ASTNode(data, NodeType::StructInstance),
 		members(std::move(members)) {}
 
 	GETTER(data_type, std::string)
@@ -307,7 +334,8 @@ private:
 class StructDefinitionNode : public ASTNode
 {
 public:
-	using ASTNode::ASTNode;
+	StructDefinitionNode(const nlohmann::json& data)
+		: ASTNode(data, NodeType::StructDefinition) {}
 
 	GETTER(name, std::string)
 	GETTER(member_types, std::vector<std::string>)
@@ -333,24 +361,27 @@ inline T ASTNode::accept(ASTVisitor<T>& v) const
 	//Save the value it wants to "return" or if template functionality is desired 
 	//https://stackoverflow.com/a/65287099 can be a solution
 
-	#define dispatch(node_type) if (get_type() == #node_type) return static_cast<const node_type##Node*>(this)->accept(v)
+	#define dispatch(node_type) case NodeType::##node_type: return static_cast<const node_type##Node*>(this)->accept(v)
 
-	dispatch(Literal);
-	dispatch(Function);
-	dispatch(Prototype);
-	dispatch(Binary);
-	dispatch(Variable);
-	dispatch(Call);
-	dispatch(Unary);
-	dispatch(Return);
-	dispatch(Let);
-	dispatch(If);
-	dispatch(Loop);
-	dispatch(LoopTermination);
-	dispatch(Cast);
-	dispatch(Dereference);
-	dispatch(StructInstance);
-	dispatch(StructDefinition);
+	switch (get_type())
+	{
+		dispatch(Literal);
+		dispatch(Function);
+		dispatch(Prototype);
+		dispatch(Binary);
+		dispatch(Variable);
+		dispatch(Call);
+		dispatch(Unary);
+		dispatch(Return);
+		dispatch(Let);
+		dispatch(If);
+		dispatch(Loop);
+		dispatch(LoopTermination);
+		dispatch(Cast);
+		dispatch(Dereference);
+		dispatch(StructInstance);
+		dispatch(StructDefinition);
+	}
 
 	#undef dispatch
 }

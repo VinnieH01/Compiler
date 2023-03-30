@@ -4,12 +4,13 @@
 #include <assert.h>
 
 #include "GeneratorHelper.h"
-#include "../Common.h"
 #include "CodegenVisitor.h"
 #include <llvm/Transforms/Utils.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Scalar/GVN.h>
+
+#include "Context.h"
 
 #define visit_ret(val) return
 
@@ -45,7 +46,7 @@ ValueResult CodegenVisitor::visit_literal_node(const LiteralNode& literal)
     {
         #define lit_lambda [this](const LiteralNode& lit)
 
-        {TypeNames::boolean,        lit_lambda { return ConstantInt::get(get_context(), APInt(1, lit.get_value<uint64_t>())); } },
+        {TypeNames::boolean,        lit_lambda { return ConstantInt::get(get_context(), APInt(1, lit.get_value<uint64_t>())); }},
         {TypeNames::int_8,          lit_lambda { return ConstantInt::get(get_context(), APInt(8, lit.get_value<uint64_t>())); }},
         {TypeNames::int_16,         lit_lambda { return ConstantInt::get(get_context(), APInt(16, lit.get_value<uint64_t>())); }},
         {TypeNames::int_32,         lit_lambda { return ConstantInt::get(get_context(), APInt(32, lit.get_value<uint64_t>())); }},
@@ -99,7 +100,7 @@ ValueResult CodegenVisitor::visit_let_node(const LetNode& let)
     std::string variable_name = let.get_name();
 
     if (type != value->getType())
-        return std::make_shared<LangError>("Incompatible types in let assignment: " + variable_name);
+        return std::static_pointer_cast<LangError>(std::make_shared<IncompatibleTypeError>("Let"));
 
     if (scope_manager.is_global_scope())
     {
@@ -138,7 +139,7 @@ ValueResult CodegenVisitor::visit_binary_node(const BinaryNode& binary)
         Type* type = get_allocated_type(lhs_allocation);
 
         if (rhs_value->getType() != type)
-            return std::make_shared<LangError>("Incompatible types in assignment: " + variable_name);
+            return std::static_pointer_cast<LangError>(std::make_shared<IncompatibleTypeError>(operation));
 
         return builder.CreateStore(rhs_value, lhs_allocation);
     }
@@ -152,7 +153,7 @@ ValueResult CodegenVisitor::visit_binary_node(const BinaryNode& binary)
         Type* struct_type = get_allocated_type(struct_ptr);
 
         if (!struct_type->isStructTy())
-            return std::make_shared<LangError>("Cannot use indexing on non struct");
+            return std::static_pointer_cast<LangError>(std::make_shared<IllegalOperationError>(operation));
 
         const std::string& field_name = static_cast<VariableNode*>(rhs_node.get())->get_name();
 
@@ -176,12 +177,12 @@ ValueResult CodegenVisitor::visit_binary_node(const BinaryNode& binary)
     if (operation == Operators::pointee_assignment)
     {
         if (!lhs_type->isPointerTy())
-            return std::make_shared<LangError>("Cannot use poinee assignment on non pointer " + static_cast<VariableNode*>(lhs_node.get())->get_name());
+            return std::static_pointer_cast<LangError>(std::make_shared<IncompatibleTypeError>(operation));
         return builder.CreateStore(rhs_value, lhs_value);
     }
 
     if (lhs_type != rhs_value->getType())
-        return std::make_shared<LangError>("Incompatible types in binary operator");
+        return std::static_pointer_cast<LangError>(std::make_shared<IncompatibleTypeError>(operation));
 
     auto binary_operation_res = get_binary_operation_fn(lhs_type, operation);
     if (binary_operation_res.is_error()) return binary_operation_res.get_error();
@@ -196,8 +197,8 @@ ValueResult CodegenVisitor::visit_unary_node(const UnaryNode& unary)
     //Address of operation is a special cases
     if (operation == Operators::adress_of)
     {
-        if (operand_node->get_type() != "Variable")
-            return std::make_shared<LangError>("Cannot get adress of " + operand_node->get_type());
+        if (operand_node->get_type() != NodeType::Variable)
+            return std::static_pointer_cast<LangError>(std::make_shared<IllegalOperationError>(operation));
         return scope_manager.get_variable_allocation(static_cast<VariableNode*>(operand_node.get())->get_name());
     }
 
@@ -232,7 +233,7 @@ ValueResult CodegenVisitor::visit_unary_node(const UnaryNode& unary)
             return builder_fn->second(operand);
     }
 
-    return std::make_shared<LangError>("This unary operator cannot be applied to the supplied value: " + operation);
+    return std::static_pointer_cast<LangError>(std::make_shared<IllegalOperationError>(operation));
 }
 
 ValueResult CodegenVisitor::visit_return_node(const ReturnNode& return_node)
@@ -313,7 +314,7 @@ ValueResult CodegenVisitor::visit_function_node(const FunctionNode& function_nod
         auto node_res = node->accept(*this);
         if (node_res.is_error()) errors->add_error(node_res.get_error());
 
-        if (node->get_type() == "Return")
+        if (node->get_type() == NodeType::Return)
         {
             //If we return there is no point in generating further instructions
             break;
@@ -363,7 +364,7 @@ ValueResult CodegenVisitor::visit_call_node(const CallNode& call)
     const auto& callee_name = fsm.get_function_name(call.get_callee(), arg_types);
     Function* callee = module.getFunction(callee_name);
     if (!callee)
-        return std::make_shared<LangError>("Function does not exist: " + call.get_callee());
+        return std::static_pointer_cast<LangError>(std::make_shared<InvalidSymbolError>(call.get_callee()));
 
     return builder.CreateCall(callee, arg_values);
 }
