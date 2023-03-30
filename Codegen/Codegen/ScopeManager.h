@@ -9,7 +9,7 @@ class ScopeManager
 {
 public:
 	ScopeManager(llvm::Module& module);
-	Result<void, std::shared_ptr<LangError>> add_local_variable(const std::string& name, llvm::AllocaInst* allocation);
+	Result<void, LangError> add_local_variable(const std::string& name, llvm::AllocaInst* allocation);
 	ValueResult create_global_variable(const std::string& name, llvm::Type* type, llvm::Value* init_val);
 	void push_scope();
 	void pop_scope();

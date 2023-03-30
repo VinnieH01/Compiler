@@ -44,7 +44,7 @@ int main(int argc, char* argv[])
         if (res.is_error())
         {
             gen_error = true;
-            outs() << res.get_error()->get_full_message();
+            outs() << res.get_error().get_error_message();
         }
     }
 

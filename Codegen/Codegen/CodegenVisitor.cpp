@@ -72,7 +72,7 @@ ValueResult CodegenVisitor::visit_literal_node(const LiteralNode& literal)
     if (auto func = type_to_const.find(literal.get_data_type()); func != type_to_const.end())
         return func->second(literal);
 
-    return std::make_shared<LangError>("Cannot get datatype of literal");
+    return LangError("Cannot get datatype of literal");
 }
 
 ValueResult CodegenVisitor::visit_variable_node(const VariableNode& variable)
@@ -100,7 +100,7 @@ ValueResult CodegenVisitor::visit_let_node(const LetNode& let)
     std::string variable_name = let.get_name();
 
     if (type != value->getType())
-        return std::static_pointer_cast<LangError>(std::make_shared<IncompatibleTypeError>("Let"));
+        return LangError(IncompatibleTypeError("Let"));
 
     if (scope_manager.is_global_scope())
     {
@@ -139,7 +139,7 @@ ValueResult CodegenVisitor::visit_binary_node(const BinaryNode& binary)
         Type* type = get_allocated_type(lhs_allocation);
 
         if (rhs_value->getType() != type)
-            return std::static_pointer_cast<LangError>(std::make_shared<IncompatibleTypeError>(operation));
+            return LangError(IncompatibleTypeError(operation));
 
         return builder.CreateStore(rhs_value, lhs_allocation);
     }
@@ -153,7 +153,7 @@ ValueResult CodegenVisitor::visit_binary_node(const BinaryNode& binary)
         Type* struct_type = get_allocated_type(struct_ptr);
 
         if (!struct_type->isStructTy())
-            return std::static_pointer_cast<LangError>(std::make_shared<IllegalOperationError>(operation));
+            return LangError(IllegalOperationError(operation));
 
         const std::string& field_name = static_cast<VariableNode*>(rhs_node.get())->get_name();
 
@@ -177,12 +177,12 @@ ValueResult CodegenVisitor::visit_binary_node(const BinaryNode& binary)
     if (operation == Operators::pointee_assignment)
     {
         if (!lhs_type->isPointerTy())
-            return std::static_pointer_cast<LangError>(std::make_shared<IncompatibleTypeError>(operation));
+            return LangError(IncompatibleTypeError(operation));
         return builder.CreateStore(rhs_value, lhs_value);
     }
 
     if (lhs_type != rhs_value->getType())
-        return std::static_pointer_cast<LangError>(std::make_shared<IncompatibleTypeError>(operation));
+        return LangError(IncompatibleTypeError(operation));
 
     auto binary_operation_res = get_binary_operation_fn(lhs_type, operation);
     if (binary_operation_res.is_error()) return binary_operation_res.get_error();
@@ -198,7 +198,7 @@ ValueResult CodegenVisitor::visit_unary_node(const UnaryNode& unary)
     if (operation == Operators::adress_of)
     {
         if (operand_node->get_type() != NodeType::Variable)
-            return std::static_pointer_cast<LangError>(std::make_shared<IllegalOperationError>(operation));
+            return LangError(IllegalOperationError(operation));
         return scope_manager.get_variable_allocation(static_cast<VariableNode*>(operand_node.get())->get_name());
     }
 
@@ -233,7 +233,7 @@ ValueResult CodegenVisitor::visit_unary_node(const UnaryNode& unary)
             return builder_fn->second(operand);
     }
 
-    return std::static_pointer_cast<LangError>(std::make_shared<IllegalOperationError>(operation));
+    return LangError(IllegalOperationError(operation));
 }
 
 ValueResult CodegenVisitor::visit_return_node(const ReturnNode& return_node)
@@ -308,11 +308,11 @@ ValueResult CodegenVisitor::visit_function_node(const FunctionNode& function_nod
         scope_manager.add_local_variable(std::string(arg.getName()), alloca_inst);
     }
 
-    auto errors = std::make_shared<LangErrorList>();
+    LangErrorList errors;
     for (const auto& node : function_node.get_body())
     {
         auto node_res = node->accept(*this);
-        if (node_res.is_error()) errors->add_error(node_res.get_error());
+        if (node_res.is_error()) errors.add_error(node_res.get_error().get_variant());
 
         if (node->get_type() == NodeType::Return)
         {
@@ -321,7 +321,7 @@ ValueResult CodegenVisitor::visit_function_node(const FunctionNode& function_nod
         }
     }
 
-    if (errors->has_errors()) return std::static_pointer_cast<LangError>(errors);
+    if (errors.has_errors()) return LangError(errors);
 
     //The user doesn't need to add returns at the end of void functions so we have to do it here
     if (function->getReturnType()->isVoidTy())
@@ -337,7 +337,7 @@ ValueResult CodegenVisitor::visit_function_node(const FunctionNode& function_nod
 
     //verifyFunction returns true if it fails
     if (verifyFunction(*function, &outs()))
-        return std::make_shared<LangError>("Function verification failed: " + function->getName().str());
+        return LangError("Function verification failed: " + function->getName().str());
 
     //Optimize function
     fpm.run(*function);
@@ -364,7 +364,7 @@ ValueResult CodegenVisitor::visit_call_node(const CallNode& call)
     const auto& callee_name = fsm.get_function_name(call.get_callee(), arg_types);
     Function* callee = module.getFunction(callee_name);
     if (!callee)
-        return std::static_pointer_cast<LangError>(std::make_shared<InvalidSymbolError>(call.get_callee()));
+        return LangError(InvalidSymbolError(call.get_callee()));
 
     return builder.CreateCall(callee, arg_values);
 }
@@ -377,7 +377,7 @@ ValueResult CodegenVisitor::visit_if_node(const IfNode& if_statement)
     Value* condition = *condition_res;
 
     if (!condition->getType()->isIntegerTy(1))
-        return std::make_shared<LangError>("If statement requires bool type");
+        return LangError("If statement requires bool type");
 
     Function* function = builder.GetInsertBlock()->getParent();
 
@@ -389,7 +389,7 @@ ValueResult CodegenVisitor::visit_if_node(const IfNode& if_statement)
     //Branch to then if condition otherwise to else
     builder.CreateCondBr(condition, then_block, else_block);
 
-    auto errors = std::make_shared<LangErrorList>();
+    LangErrorList errors;
     auto generate_block = [&](BasicBlock* block, const std::vector<std::unique_ptr<ASTNode>>& block_nodes)
     {
         block->insertInto(function);
@@ -403,7 +403,7 @@ ValueResult CodegenVisitor::visit_if_node(const IfNode& if_statement)
             //If we find a return or break we want to stop generating this block since nothing can run after the return/break anyway.
             //Without this the verifier would complain and the function would be invalid because there can only be one termination point.
             auto node_res = body_node->accept(*this);
-            if (node_res.is_error()) errors->add_error(node_res.get_error());
+            if (node_res.is_error()) errors.add_error(node_res.get_error().get_variant());
 
             found_terminator = is_control_flow_terminator(body_node.get());
             if (found_terminator) break;
@@ -421,7 +421,7 @@ ValueResult CodegenVisitor::visit_if_node(const IfNode& if_statement)
     generate_block(then_block, if_statement.get_then());
     generate_block(else_block, if_statement.get_else());
 
-    if (errors->has_errors()) return std::static_pointer_cast<LangError>(errors);
+    if (errors.has_errors()) return LangError(errors);
 
     //Add the continue block at the end. This is not a new scope, simply a return to the old one
     continuation_block->insertInto(function);
@@ -449,13 +449,13 @@ ValueResult CodegenVisitor::visit_loop_node(const LoopNode& loop)
 
     scope_manager.push_scope();
     bool found_terminator = false;
-    auto errors = std::make_shared<LangErrorList>();
+    LangErrorList errors;
     for (const auto& body_node : loop.get_body())
     {
         //If we find a "return" or "break/continue" we want to break out of this loop since nothing can run after the return/break anyway.
         //Without this the verifier would complain and the function would be invalid.
         auto node_res = body_node->accept(*this);
-        if (node_res.is_error()) errors->add_error(node_res.get_error());
+        if (node_res.is_error()) errors.add_error(node_res.get_error().get_variant());
 
         found_terminator = is_control_flow_terminator(body_node.get());
         if (found_terminator) break;
@@ -469,7 +469,7 @@ ValueResult CodegenVisitor::visit_loop_node(const LoopNode& loop)
         builder.CreateBr(loop_block);
     }
 
-    if (errors->has_errors()) return std::static_pointer_cast<LangError>(errors);
+    if (errors.has_errors()) return LangError(errors);
 
     scope_manager.pop_scope();
 
@@ -488,7 +488,7 @@ ValueResult CodegenVisitor::visit_loop_node(const LoopNode& loop)
 ValueResult CodegenVisitor::visit_loop_termination_node(const LoopTerminationNode& termination)
 {
     if (loop_stack.size() == 0)
-        return std::make_shared<LangError>("Cannot break/continue outside loop");
+        return LangError("Cannot break/continue outside loop");
 
     //Note: "continue_block" refers to the continue keyword and not the "continuation" block
     auto& [continue_block, break_block] = loop_stack.top();
@@ -537,7 +537,7 @@ ValueResult CodegenVisitor::visit_cast_node(const CastNode& cast)
     if (type_before->isPointerTy() && type_after->isIntegerTy())
         return builder.CreatePtrToInt(before_cast, type_after);
 
-    return std::make_shared<LangError>("Cant perform cast");
+    return LangError("Cant perform cast");
 }
 
 ValueResult CodegenVisitor::visit_dereference_node(const DereferenceNode& deref)
@@ -547,7 +547,7 @@ ValueResult CodegenVisitor::visit_dereference_node(const DereferenceNode& deref)
 
     Value* variable = *var_res;
     if (!variable->getType()->isPointerTy())
-        return std::make_shared<LangError>("Cannot dereference non pointer: " + static_cast<VariableNode*>(deref.get_variable().get())->get_name());
+        return LangError("Cannot dereference non pointer: " + static_cast<VariableNode*>(deref.get_variable().get())->get_name());
 
     auto deref_type_res = get_type_from_string(deref.get_data_type());
     if (deref_type_res.is_error()) return deref_type_res.get_error();
@@ -558,7 +558,7 @@ ValueResult CodegenVisitor::visit_dereference_node(const DereferenceNode& deref)
 ValueResult CodegenVisitor::visit_struct_instance_node(const StructInstanceNode& struct_inst)
 {
     if (scope_manager.is_global_scope())
-        return std::make_shared<LangError>("Can only create struct in function"); //For now we cant declare global structs. They have to be pointers
+        return LangError("Can only create struct in function"); //For now we cant declare global structs. They have to be pointers
 
     Function* func = builder.GetInsertBlock()->getParent();
 

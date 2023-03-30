@@ -9,13 +9,11 @@ ScopeManager::ScopeManager(Module& module)
 {
 }
 
-Result<void, std::shared_ptr<LangError>> ScopeManager::add_local_variable(const std::string& name, AllocaInst* allocation)
+Result<void, LangError> ScopeManager::add_local_variable(const std::string& name, AllocaInst* allocation)
 {
     if (local_variables.top().count(name))
     {
-        return std::static_pointer_cast<LangError>(
-            std::make_shared<RedeclarationError>(name)
-            );
+        return LangError(RedeclarationError(name));
     }
 
     local_variables.top()[std::string(name)] = allocation;
@@ -27,15 +25,13 @@ ValueResult ScopeManager::create_global_variable(const std::string& name, llvm::
 {
     if (!isa<Constant>(init_val)) 
     {
-        return std::make_shared<LangError>("Can only initialize global variable with a constant");
+        return LangError("Can only initialize global variable with a constant");
     }
 
     //This includes other types of values not just global variables (such as function names).
     if (module.getNamedValue(name))
     {
-        return std::static_pointer_cast<LangError>(
-            std::make_shared<RedeclarationError>(name)
-            );
+        return LangError(RedeclarationError(name));
     }
 
     return new GlobalVariable(module, type, false, GlobalValue::ExternalLinkage, cast<Constant>(init_val), name);
@@ -71,7 +67,5 @@ ValueResult ScopeManager::get_variable_allocation(const std::string& name)
     if (auto global_var = module.getNamedGlobal(name))
         return global_var;
 
-    return std::static_pointer_cast<LangError>(
-        std::make_shared<InvalidSymbolError>(name)
-    );
+    return LangError(InvalidSymbolError(name));
 }
