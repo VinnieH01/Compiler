@@ -38,19 +38,28 @@ int main(int argc, char* argv[])
 
     CodegenVisitor gen;
 
+    bool gen_error = false;
     for (const auto& node : nodes)
     {
-        node->accept(gen);
+        auto res = node->accept(gen);
+        if (res.is_error())
+        {
+            gen_error = true;
+            outs() << res.get_error()->get_full_message();
+        }
     }
 
-    const Module& module = gen.get_module();
+    if (!gen_error) 
+    {
+        const Module& module = gen.get_module();
 
-    module.print(outs(), nullptr);
+        module.print(outs(), nullptr);
 
-    std::error_code EC;
-    raw_fd_ostream OS("module", EC);
-    WriteBitcodeToFile(module, OS);
-    OS.flush();
+        std::error_code EC;
+        raw_fd_ostream OS("module", EC);
+        WriteBitcodeToFile(module, OS);
+        OS.flush();
+    }
 	
     return 0;
 }

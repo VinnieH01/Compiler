@@ -39,7 +39,7 @@ CodegenVisitor::CodegenVisitor()
     fsm.add_unmangled_name("main", {});
 }
 
-Value* CodegenVisitor::visit_literal_node(const LiteralNode& literal)
+ValueResult CodegenVisitor::visit_literal_node(const LiteralNode& literal)
 {
     static std::unordered_map<std::string, std::function<Value* (const LiteralNode&)>> type_to_const
     {
@@ -71,25 +71,35 @@ Value* CodegenVisitor::visit_literal_node(const LiteralNode& literal)
     if (auto func = type_to_const.find(literal.get_data_type()); func != type_to_const.end())
         return func->second(literal);
 
-    error("Cannot get datatype of literal");
+    return std::make_shared<LangError>("Cannot get datatype of literal");
 }
 
-Value* CodegenVisitor::visit_variable_node(const VariableNode& variable)
+ValueResult CodegenVisitor::visit_variable_node(const VariableNode& variable)
 {
-    Value* allocation = scope_manager.get_variable_allocation(variable.get_name());
+    auto allocation_res = scope_manager.get_variable_allocation(variable.get_name());
+    if (allocation_res.is_error()) return allocation_res.get_error();
+
+    Value* allocation = *allocation_res;
     Type* type = get_allocated_type(allocation);
 
     return builder.CreateLoad(type, allocation);
 }
 
-Value* CodegenVisitor::visit_let_node(const LetNode& let)
+ValueResult CodegenVisitor::visit_let_node(const LetNode& let)
 {
-    Value* value = let.get_value()->accept(*this);
-    Type* type = get_type_from_string(let.get_data_type());
+    auto value_res = let.get_value()->accept(*this);
+    if (value_res.is_error()) return value_res.get_error();
+
+    Value* value = *value_res;
+
+    auto type_res = get_type_from_string(let.get_data_type());
+    if (type_res.is_error()) return type_res.get_error();
+
+    Type* type = *type_res;
     std::string variable_name = let.get_name();
 
     if (type != value->getType())
-        error("Incompatible types in let assignment: " + variable_name);
+        return std::make_shared<LangError>("Incompatible types in let assignment: " + variable_name);
 
     if (scope_manager.is_global_scope())
     {
@@ -99,12 +109,13 @@ Value* CodegenVisitor::visit_let_node(const LetNode& let)
     Function* function = builder.GetInsertBlock()->getParent();
 
     AllocaInst* alloca_inst = create_alloca_at_top(function, variable_name, type);
-    scope_manager.add_local_variable(variable_name, alloca_inst);
+    auto res = scope_manager.add_local_variable(variable_name, alloca_inst);
+    if (res.is_error()) return res.get_error();
 
     return builder.CreateStore(value, alloca_inst);
 }
 
-Value* CodegenVisitor::visit_binary_node(const BinaryNode& binary)
+ValueResult CodegenVisitor::visit_binary_node(const BinaryNode& binary)
 {
     const std::string& operation = binary.get_operator();
     const auto& lhs_node = binary.get_left();
@@ -114,50 +125,70 @@ Value* CodegenVisitor::visit_binary_node(const BinaryNode& binary)
     if (operation == Operators::assignment)
     {
         std::string variable_name = static_cast<VariableNode*>(lhs_node.get())->get_name();
-        Value* rhs_value = rhs_node->accept(*this);
-        Value* lhs_allocation = scope_manager.get_variable_allocation(variable_name);
+
+        auto lhs_res = scope_manager.get_variable_allocation(variable_name);
+        if (lhs_res.is_error()) return lhs_res.get_error();
+
+        auto rhs_res = rhs_node->accept(*this);
+        if (rhs_res.is_error()) return rhs_res.get_error();
+
+        Value* lhs_allocation = *lhs_res;
+        Value* rhs_value = *rhs_res;
 
         Type* type = get_allocated_type(lhs_allocation);
 
         if (rhs_value->getType() != type)
-            error("Incompatible types in assignment: " + variable_name);
+            return std::make_shared<LangError>("Incompatible types in assignment: " + variable_name);
 
         return builder.CreateStore(rhs_value, lhs_allocation);
     }
     
     if (operation == Operators::dot)
     {
-        Value* struct_ptr = scope_manager.get_variable_allocation(static_cast<VariableNode*>(lhs_node.get())->get_name());
+        auto struct_allocation_res = scope_manager.get_variable_allocation(static_cast<VariableNode*>(lhs_node.get())->get_name());
+        if (struct_allocation_res.is_error()) return struct_allocation_res.get_error();
+
+        Value* struct_ptr = *struct_allocation_res;
         Type* struct_type = get_allocated_type(struct_ptr);
 
         if (!struct_type->isStructTy())
-            error("Cannot use indexing on non struct");
+            return std::make_shared<LangError>("Cannot use indexing on non struct");
 
         const std::string& field_name = static_cast<VariableNode*>(rhs_node.get())->get_name();
 
-        return builder.CreateStructGEP(struct_type, struct_ptr, struct_manager.get_field_index(cast<StructType>(struct_type), field_name));
+        auto index_res = struct_manager.get_field_index(cast<StructType>(struct_type), field_name);
+        if (index_res.is_error()) return index_res.get_error();
+
+        return builder.CreateStructGEP(struct_type, struct_ptr, *index_res);
     }
 
-    Value* lhs_value = lhs_node->accept(*this);
-    Value* rhs_value = rhs_node->accept(*this);
+    auto lhs_res = lhs_node->accept(*this);
+    if (lhs_res.is_error()) return lhs_res.get_error();
+
+    auto rhs_res = rhs_node->accept(*this);
+    if (rhs_res.is_error()) return rhs_res.get_error();
+
+    Value* lhs_value = *lhs_res;
+    Value* rhs_value = *rhs_res;
 
     Type* lhs_type = lhs_value->getType();
 
     if (operation == Operators::pointee_assignment)
     {
         if (!lhs_type->isPointerTy())
-            error("Cannot use poinee assignment on non pointer " + static_cast<VariableNode*>(lhs_node.get())->get_name());
+            return std::make_shared<LangError>("Cannot use poinee assignment on non pointer " + static_cast<VariableNode*>(lhs_node.get())->get_name());
         return builder.CreateStore(rhs_value, lhs_value);
     }
 
     if (lhs_type != rhs_value->getType())
-        error("Incompatible types in binary operator");
+        return std::make_shared<LangError>("Incompatible types in binary operator");
 
-    auto create_binary_operation = get_binary_operation_fn(lhs_type, operation);
-    return create_binary_operation(builder, lhs_value, rhs_value);
+    auto binary_operation_res = get_binary_operation_fn(lhs_type, operation);
+    if (binary_operation_res.is_error()) return binary_operation_res.get_error();
+    return (*binary_operation_res)(builder, lhs_value, rhs_value);
 }
 
-Value* CodegenVisitor::visit_unary_node(const UnaryNode& unary)
+ValueResult CodegenVisitor::visit_unary_node(const UnaryNode& unary)
 {
     std::string operation = unary.get_operator();
     const auto& operand_node = unary.get_operand();
@@ -166,11 +197,14 @@ Value* CodegenVisitor::visit_unary_node(const UnaryNode& unary)
     if (operation == Operators::adress_of)
     {
         if (operand_node->get_type() != "Variable")
-            error("Cannot get adress of " + operand_node->get_type());
+            return std::make_shared<LangError>("Cannot get adress of " + operand_node->get_type());
         return scope_manager.get_variable_allocation(static_cast<VariableNode*>(operand_node.get())->get_name());
     }
 
-    Value* operand = operand_node->accept(*this);
+    auto operand_res = operand_node->accept(*this);
+    if (operand_res.is_error()) return operand_res.get_error();
+
+    Value* operand = *operand_res;
     Type* type = operand->getType();
 
     //TODO: For now only i32 and f64 support unary operators.
@@ -198,25 +232,36 @@ Value* CodegenVisitor::visit_unary_node(const UnaryNode& unary)
             return builder_fn->second(operand);
     }
 
-    error("This unary operator cannot be applied to the supplied value: " + operation);
+    return std::make_shared<LangError>("This unary operator cannot be applied to the supplied value: " + operation);
 }
 
-Value* CodegenVisitor::visit_return_node(const ReturnNode& return_node)
+ValueResult CodegenVisitor::visit_return_node(const ReturnNode& return_node)
 {
-    Value* ret_val = return_node.get_value()->accept(*this);
+    auto val_res = return_node.get_value()->accept(*this);
+    if (val_res.is_error()) return val_res.get_error();
+
+    Value* ret_val = *val_res;
     return builder.CreateRet(ret_val);
 }
 
-Value* CodegenVisitor::visit_prototype_node(const PrototypeNode& prototype)
+ValueResult CodegenVisitor::visit_prototype_node(const PrototypeNode& prototype)
 {
     std::vector<std::string> args = prototype.get_args();
-    std::vector<std::string> arg_types_str = prototype.get_arg_types();
     std::string name = prototype.get_name();
 
     std::vector<Type*> arg_types;
-    std::transform(arg_types_str.begin(), arg_types_str.end(), std::back_inserter(arg_types), get_type_from_string);
+    for (const auto& type_str : prototype.get_arg_types())
+    {
+        auto type_res = get_type_from_string(type_str);
+        if (type_res.is_error()) return type_res.get_error();
 
-    Type* return_type = get_type_from_string(prototype.get_ret_type());
+        arg_types.push_back(*type_res);
+    }
+
+    auto return_type_res = get_type_from_string(prototype.get_ret_type());
+    if (return_type_res.is_error()) return return_type_res.get_error();
+
+    Type* return_type = *return_type_res;
     FunctionType* func_type = FunctionType::get(return_type, arg_types, false);
 
     //If it is declared as extern we don't want any name mangling
@@ -233,14 +278,19 @@ Value* CodegenVisitor::visit_prototype_node(const PrototypeNode& prototype)
     return function;
 }
 
-Value* CodegenVisitor::visit_function_node(const FunctionNode& function_node)
+ValueResult CodegenVisitor::visit_function_node(const FunctionNode& function_node)
 {
     const PrototypeNode* const prototype = function_node.get_prototype();
 
     //If function is already declared we dont want to redeclare
     Function* function = module.getFunction(prototype->get_name());
     if (!function)
-        function = cast<Function>(prototype->accept(*this));
+    {
+        auto prototype_res = prototype->accept(*this);
+        if (prototype_res.is_error()) return prototype_res.get_error();
+
+        function = cast<Function>(*prototype_res);
+    }
 
     BasicBlock* function_block = BasicBlock::Create(get_context(), "entry", function);
     builder.SetInsertPoint(function_block);
@@ -257,9 +307,11 @@ Value* CodegenVisitor::visit_function_node(const FunctionNode& function_node)
         scope_manager.add_local_variable(std::string(arg.getName()), alloca_inst);
     }
 
+    auto errors = std::make_shared<LangErrorList>();
     for (const auto& node : function_node.get_body())
     {
-        node->accept(*this);
+        auto node_res = node->accept(*this);
+        if (node_res.is_error()) errors->add_error(node_res.get_error());
 
         if (node->get_type() == "Return")
         {
@@ -267,6 +319,8 @@ Value* CodegenVisitor::visit_function_node(const FunctionNode& function_node)
             break;
         }
     }
+
+    if (errors->has_errors()) return std::static_pointer_cast<LangError>(errors);
 
     //The user doesn't need to add returns at the end of void functions so we have to do it here
     if (function->getReturnType()->isVoidTy())
@@ -282,7 +336,7 @@ Value* CodegenVisitor::visit_function_node(const FunctionNode& function_node)
 
     //verifyFunction returns true if it fails
     if (verifyFunction(*function, &outs()))
-        error("Function verification failed: " + function->getName().str());
+        return std::make_shared<LangError>("Function verification failed: " + function->getName().str());
 
     //Optimize function
     fpm.run(*function);
@@ -290,7 +344,7 @@ Value* CodegenVisitor::visit_function_node(const FunctionNode& function_node)
     return function;
 }
 
-Value* CodegenVisitor::visit_call_node(const CallNode& call)
+ValueResult CodegenVisitor::visit_call_node(const CallNode& call)
 {
     auto& arguments = call.get_args();
 
@@ -298,26 +352,31 @@ Value* CodegenVisitor::visit_call_node(const CallNode& call)
     std::vector<Type*> arg_types;
     for (const auto& arg : arguments)
     {
-        Value* val = arg->accept(*this);
+        auto arg_res = arg->accept(*this);
+        if (arg_res.is_error()) return arg_res.get_error();
+
+        Value* val = *arg_res;
         arg_values.push_back(val);
         arg_types.push_back(val->getType());
     }
 
     const auto& callee_name = fsm.get_function_name(call.get_callee(), arg_types);
-
     Function* callee = module.getFunction(callee_name);
     if (!callee)
-        error("Function does not exist: " + callee_name);
+        return std::make_shared<LangError>("Function does not exist: " + call.get_callee());
 
     return builder.CreateCall(callee, arg_values);
 }
 
-Value* CodegenVisitor::visit_if_node(const IfNode& if_statement)
+ValueResult CodegenVisitor::visit_if_node(const IfNode& if_statement)
 {
-    Value* condition = if_statement.get_condition()->accept(*this);
+    auto condition_res = if_statement.get_condition()->accept(*this);
+    if (condition_res.is_error()) return condition_res.get_error();
+
+    Value* condition = *condition_res;
 
     if (!condition->getType()->isIntegerTy(1))
-        error("If statement requires bool type");
+        return std::make_shared<LangError>("If statement requires bool type");
 
     Function* function = builder.GetInsertBlock()->getParent();
 
@@ -329,6 +388,7 @@ Value* CodegenVisitor::visit_if_node(const IfNode& if_statement)
     //Branch to then if condition otherwise to else
     builder.CreateCondBr(condition, then_block, else_block);
 
+    auto errors = std::make_shared<LangErrorList>();
     auto generate_block = [&](BasicBlock* block, const std::vector<std::unique_ptr<ASTNode>>& block_nodes)
     {
         block->insertInto(function);
@@ -341,7 +401,9 @@ Value* CodegenVisitor::visit_if_node(const IfNode& if_statement)
         {
             //If we find a return or break we want to stop generating this block since nothing can run after the return/break anyway.
             //Without this the verifier would complain and the function would be invalid because there can only be one termination point.
-            body_node->accept(*this);
+            auto node_res = body_node->accept(*this);
+            if (node_res.is_error()) errors->add_error(node_res.get_error());
+
             found_terminator = is_control_flow_terminator(body_node.get());
             if (found_terminator) break;
         }
@@ -358,6 +420,8 @@ Value* CodegenVisitor::visit_if_node(const IfNode& if_statement)
     generate_block(then_block, if_statement.get_then());
     generate_block(else_block, if_statement.get_else());
 
+    if (errors->has_errors()) return std::static_pointer_cast<LangError>(errors);
+
     //Add the continue block at the end. This is not a new scope, simply a return to the old one
     continuation_block->insertInto(function);
     builder.SetInsertPoint(continuation_block);
@@ -366,7 +430,7 @@ Value* CodegenVisitor::visit_if_node(const IfNode& if_statement)
     return then_block;
 }
 
-Value* CodegenVisitor::visit_loop_node(const LoopNode& loop)
+ValueResult CodegenVisitor::visit_loop_node(const LoopNode& loop)
 {
     Function* function = builder.GetInsertBlock()->getParent();
 
@@ -384,11 +448,14 @@ Value* CodegenVisitor::visit_loop_node(const LoopNode& loop)
 
     scope_manager.push_scope();
     bool found_terminator = false;
+    auto errors = std::make_shared<LangErrorList>();
     for (const auto& body_node : loop.get_body())
     {
         //If we find a "return" or "break/continue" we want to break out of this loop since nothing can run after the return/break anyway.
         //Without this the verifier would complain and the function would be invalid.
-        body_node->accept(*this);
+        auto node_res = body_node->accept(*this);
+        if (node_res.is_error()) errors->add_error(node_res.get_error());
+
         found_terminator = is_control_flow_terminator(body_node.get());
         if (found_terminator) break;
     }
@@ -400,6 +467,8 @@ Value* CodegenVisitor::visit_loop_node(const LoopNode& loop)
         //Branch back to the top
         builder.CreateBr(loop_block);
     }
+
+    if (errors->has_errors()) return std::static_pointer_cast<LangError>(errors);
 
     scope_manager.pop_scope();
 
@@ -415,10 +484,10 @@ Value* CodegenVisitor::visit_loop_node(const LoopNode& loop)
     return loop_block;
 }
 
-Value* CodegenVisitor::visit_loop_termination_node(const LoopTerminationNode& termination)
+ValueResult CodegenVisitor::visit_loop_termination_node(const LoopTerminationNode& termination)
 {
     if (loop_stack.size() == 0)
-        error("Cannot break/continue outside loop");
+        return std::make_shared<LangError>("Cannot break/continue outside loop");
 
     //Note: "continue_block" refers to the continue keyword and not the "continuation" block
     auto& [continue_block, break_block] = loop_stack.top();
@@ -428,11 +497,18 @@ Value* CodegenVisitor::visit_loop_termination_node(const LoopTerminationNode& te
     return builder.CreateBr(branch_to);
 }
 
-Value* CodegenVisitor::visit_cast_node(const CastNode& cast)
+ValueResult CodegenVisitor::visit_cast_node(const CastNode& cast)
 {
-    Value* before_cast = cast.get_value()->accept(*this);
+    auto cast_res = cast.get_value()->accept(*this);
+    if (cast_res.is_error()) return cast_res.get_error();
+
+    Value* before_cast = *cast_res;
     Type* type_before = before_cast->getType();
-    Type* type_after = get_type_from_string(cast.get_data_type());
+
+    auto type_after_res = get_type_from_string(cast.get_data_type());
+    if (type_after_res.is_error()) return type_after_res.get_error();
+
+    Type* type_after = *type_after_res;
 
     //If the types are the same we don't need to perform a cast
     if (type_before == type_after) return before_cast;
@@ -460,49 +536,65 @@ Value* CodegenVisitor::visit_cast_node(const CastNode& cast)
     if (type_before->isPointerTy() && type_after->isIntegerTy())
         return builder.CreatePtrToInt(before_cast, type_after);
 
-    error("Cant perform cast");
+    return std::make_shared<LangError>("Cant perform cast");
 }
 
-Value* CodegenVisitor::visit_dereference_node(const DereferenceNode& deref)
+ValueResult CodegenVisitor::visit_dereference_node(const DereferenceNode& deref)
 {
-    Value* variable = deref.get_variable()->accept(*this);
-    if (!variable->getType()->isPointerTy())
-        error("Cannot dereference non pointer: " + static_cast<VariableNode*>(deref.get_variable().get())->get_name());
+    auto var_res = deref.get_variable()->accept(*this);
+    if (var_res.is_error()) return var_res.get_error();
 
-    return builder.CreateLoad(get_type_from_string(deref.get_data_type()), variable);
+    Value* variable = *var_res;
+    if (!variable->getType()->isPointerTy())
+        return std::make_shared<LangError>("Cannot dereference non pointer: " + static_cast<VariableNode*>(deref.get_variable().get())->get_name());
+
+    auto deref_type_res = get_type_from_string(deref.get_data_type());
+    if (deref_type_res.is_error()) return deref_type_res.get_error();
+
+    return builder.CreateLoad(*deref_type_res, variable);
 }
 
-Value* CodegenVisitor::visit_struct_instance_node(const StructInstanceNode& struct_inst)
+ValueResult CodegenVisitor::visit_struct_instance_node(const StructInstanceNode& struct_inst)
 {
     if (scope_manager.is_global_scope())
-        error("Can only create struct in function"); //For now we cant declare global structs. They have to be pointers
+        return std::make_shared<LangError>("Can only create struct in function"); //For now we cant declare global structs. They have to be pointers
 
     Function* func = builder.GetInsertBlock()->getParent();
 
     std::vector<Value*> members;
-    auto& struct_members = struct_inst.get_members();
-    std::transform(struct_members.begin(), struct_members.end(), std::back_inserter(members),
-        [this](const auto& member_node) { return member_node->accept(*this); });
+    for (auto& member_node : struct_inst.get_members())
+    {
+        auto member_res = member_node->accept(*this);
+        if (member_res.is_error()) return member_res.get_error();
+        members.push_back(*member_res);
+    }
 
-    auto* struct_type = get_type_from_string(struct_inst.get_data_type());
-    AllocaInst* struct_alloc = create_alloca_at_top(func, "struct", struct_type);
+    auto struct_type_res = get_type_from_string(struct_inst.get_data_type());
+    if (struct_type_res.is_error()) return struct_type_res.get_error();
+
+    AllocaInst* struct_alloc = create_alloca_at_top(func, "struct", *struct_type_res);
 
     //Then get pointers to each member of the struct and set the value at that pointer to be the value of the member we are initializing it to
     for (unsigned i = 0; i < members.size(); ++i)
     {
-        Value* ptr_to_member = builder.CreateStructGEP(struct_type, struct_alloc, i);
+        Value* ptr_to_member = builder.CreateStructGEP(*struct_type_res, struct_alloc, i);
         builder.CreateStore(members[i], ptr_to_member);
     }
 
     //Finally get the struct from the alloca
-    return builder.CreateLoad(struct_type, struct_alloc);
+    return builder.CreateLoad(*struct_type_res, struct_alloc);
 }
 
-Value* CodegenVisitor::visit_struct_definition_node(const StructDefinitionNode& struct_def)
+ValueResult CodegenVisitor::visit_struct_definition_node(const StructDefinitionNode& struct_def)
 {
-    const auto& member_typenames = struct_def.get_member_types();
     std::vector<Type*> types;
-    std::transform(member_typenames.begin(), member_typenames.end(), std::back_inserter(types), get_type_from_string);
+    for (const auto& type_str : struct_def.get_member_types())
+    {
+        auto type_res = get_type_from_string(type_str);
+        if (type_res.is_error()) return type_res.get_error();
+
+        types.push_back(*type_res);
+    }
 
     auto* type = StructType::create(get_context(), types, struct_def.get_name());
     struct_manager.add_struct(type, struct_def.get_member_names());

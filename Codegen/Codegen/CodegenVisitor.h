@@ -17,33 +17,33 @@
 #include "../AST/ASTNodes.hpp"
 #include "../AST/ASTVisitor.h"
 
-class CodegenVisitor : public ASTVisitor<llvm::Value*>
+#include "../Common.h"
+
+class CodegenVisitor : public ASTVisitor<ValueResult>
 {
 public:
     CodegenVisitor();
 
-    llvm::Value* visit_literal_node(const LiteralNode& node) override;
-    llvm::Value* visit_variable_node(const VariableNode& node) override;
-    llvm::Value* visit_let_node(const LetNode& node) override;
-    llvm::Value* visit_binary_node(const BinaryNode& node) override;
-    llvm::Value* visit_unary_node(const UnaryNode& node) override;
-    llvm::Value* visit_return_node(const ReturnNode& node) override;
-    llvm::Value* visit_prototype_node(const PrototypeNode& node) override;
-    llvm::Value* visit_function_node(const FunctionNode& node) override;
-    llvm::Value* visit_call_node(const CallNode& node) override;
-    llvm::Value* visit_if_node(const IfNode& node) override;
-    llvm::Value* visit_loop_node(const LoopNode& node) override;
-    llvm::Value* visit_loop_termination_node(const LoopTerminationNode& node) override;
-    llvm::Value* visit_cast_node(const CastNode& node) override;
-    llvm::Value* visit_dereference_node(const DereferenceNode& node) override;
-    llvm::Value* visit_struct_instance_node(const StructInstanceNode& node) override;
-    llvm::Value* visit_struct_definition_node(const StructDefinitionNode& node) override;
+    ValueResult visit_literal_node(const LiteralNode& node) override;
+    ValueResult visit_variable_node(const VariableNode& node) override;
+    ValueResult visit_let_node(const LetNode& node) override;
+    ValueResult visit_binary_node(const BinaryNode& node) override;
+    ValueResult visit_unary_node(const UnaryNode& node) override;
+    ValueResult visit_return_node(const ReturnNode& node) override;
+    ValueResult visit_prototype_node(const PrototypeNode& node) override;
+    ValueResult visit_function_node(const FunctionNode& node) override;
+    ValueResult visit_call_node(const CallNode& node) override;
+    ValueResult visit_if_node(const IfNode& node) override;
+    ValueResult visit_loop_node(const LoopNode& node) override;
+    ValueResult visit_loop_termination_node(const LoopTerminationNode& node) override;
+    ValueResult visit_cast_node(const CastNode& node) override;
+    ValueResult visit_dereference_node(const DereferenceNode& node) override;
+    ValueResult visit_struct_instance_node(const StructInstanceNode& node) override;
+    ValueResult visit_struct_definition_node(const StructDefinitionNode& node) override;
 
     inline const llvm::Module& get_module() const { return module; }
 
 private:
-    //const std::unique_ptr<llvm::Module>& module;
-    //const std::unique_ptr<llvm::IRBuilder<>> builder;
     llvm::Module module;
     llvm::IRBuilder<> builder;
     llvm::legacy::FunctionPassManager fpm;

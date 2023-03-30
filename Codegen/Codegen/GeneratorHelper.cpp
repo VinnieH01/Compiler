@@ -20,7 +20,7 @@ namespace GeneratorHelper
         return entry_builder.CreateAlloca(type, nullptr, variable_name);
     }
 
-    binary_operation_fn get_binary_operation_fn(Type* type, const std::string& operation)
+    Result<binary_operation_fn, std::shared_ptr<LangError>> get_binary_operation_fn(Type* type, const std::string& operation)
     {
         #define binary_operation_lambda(operation) [](IRBuilder<>& builder, Value* lhs, Value* rhs) { return builder.operation(lhs, rhs); }
 
@@ -70,10 +70,10 @@ namespace GeneratorHelper
                 return builder_fn->second;
         }
 
-        error("This binary operator cannot be applied to the supplied values: " + operation);
+        return std::make_shared<LangError>("Binary operator '" + operation + "' cannot be applied to the supplied values");
     }
 
-    Type* get_type_from_string(const std::string& type)
+    Result<Type*, std::shared_ptr<LangError>> get_type_from_string(const std::string& type)
     {
         static const std::unordered_map<std::string, Type*>& type_names
         {
@@ -95,7 +95,7 @@ namespace GeneratorHelper
         if (auto struct_type = StructType::getTypeByName(get_context(), type))
             return struct_type;
 
-        error("Invalid type: " + type);
+        return std::static_pointer_cast<LangError>(std::make_shared<InvalidSymbolError>(type));
     }
 
     bool is_control_flow_terminator(const ASTNode* const node)

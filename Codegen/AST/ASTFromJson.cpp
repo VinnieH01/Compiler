@@ -1,6 +1,7 @@
 #include "ASTNodes.hpp"
 #include "../Common.h"
 #include "ASTFromJson.h"
+#include <iostream>
 
 static std::unique_ptr<ASTNode> node_from_type(const nlohmann::json& json) 
 {
@@ -21,7 +22,8 @@ static std::unique_ptr<ASTNode> node_from_type(const nlohmann::json& json)
     if (json.at("type") == "StructInstance") return std::make_unique<StructInstanceNode>(json, create_node_list(json.at("members")));
     if (json.at("type") == "StructDefinition") return std::make_unique<StructDefinitionNode>(json);
 
-    error("Cannot create AST node from: " + (std::string)json.at("type"));
+    std::cerr << "Cannot create AST node from: " + (std::string)json.at("type");
+    exit(-1);
 }
 
 std::vector<std::unique_ptr<ASTNode>> create_node_list(const nlohmann::json& json_tree)

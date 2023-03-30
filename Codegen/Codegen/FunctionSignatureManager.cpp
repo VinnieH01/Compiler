@@ -38,7 +38,8 @@ std::string FunctionSignatureManager::get_mangled_type_str(Type* type)
         return m_type;
     }
 
-    error("Cannot mangle type");
+    //All types should be "mangelable" so if its not there is an error
+    assert(false);
 }
 
 std::string FunctionSignatureManager::get_function_name(const std::string& name, const std::vector<Type*>& arg_types)

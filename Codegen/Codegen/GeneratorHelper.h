@@ -12,6 +12,7 @@
 
 #include "../third-party/json.hpp"
 #include "../AST/ASTNodes.hpp"
+#include "../Common.h"
 
 namespace GeneratorHelper
 {
@@ -58,8 +59,8 @@ namespace GeneratorHelper
 
     llvm::AllocaInst* create_alloca_at_top(llvm::Function* func, const std::string& variable_name, llvm::Type* type);
     using binary_operation_fn = std::function<llvm::Value* (llvm::IRBuilder<>&, llvm::Value*, llvm::Value*)>;
-    binary_operation_fn get_binary_operation_fn(llvm::Type* type, const std::string& operation);
-    llvm::Type* get_type_from_string(const std::string& type);
+    Result<binary_operation_fn, std::shared_ptr<LangError>> get_binary_operation_fn(llvm::Type* type, const std::string& operation);
+    Result<llvm::Type*, std::shared_ptr<LangError>> get_type_from_string(const std::string& type);
     llvm::Type* get_allocated_type(llvm::Value* variable_ptr);
     bool is_control_flow_terminator(const ASTNode* const node);
 }
