@@ -1,9 +1,9 @@
 # Mandelbrot set example
-## The following is an example showing some of the language's syntax. It displays the mandelbrot set using ascii characters
+## The following is an example showing *some* of the language's syntax. It displays the mandelbrot set using ascii characters
 ### The `printchar(i8)` function is defined in an external library `lib.c`. The code is a translation of the one found in the LLVM Kaleidoscope tutorial.
 
 ```rust
-dec actn printchar(i8: char);
+dec extern actn printchar(i8: char);
 
 actn printdensity(i32: d)
 {
