@@ -1,0 +1,19 @@
+#include "structs"
+
+dec extern actn InitWindow(i32: w, i32: h, ptr: title);
+dec extern actn SetTargetFPS(i32: fps);
+dec extern WindowShouldClose() -> bool;
+dec extern actn DrawText(ptr: text, i32: posX, i32: posY, i32: fontSize, i32: color);
+dec actn DrawCircleV(vec2: pos, f32: r, color: col);
+dec actn DrawText(ptr: text, i32: x, i32: y, i32: s, color: col);
+dec extern IsKeyDown(i32: code) -> bool;
+
+dec extern actn BeginDrawing();
+dec actn ClearBackground(color: col);
+dec extern actn EndDrawing();
+dec extern actn CloseWindow();
+	
+let i32: KEY_RIGHT <- i32: 262;
+let i32: KEY_LEFT <- i32: 263;
+let i32: KEY_DOWN <- i32: 264;
+let i32: KEY_UP <- i32: 265;

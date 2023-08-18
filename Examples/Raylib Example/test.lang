@@ -1,0 +1,50 @@
+#include "header"
+
+actn main()
+{
+	let i32: screen_width <- i32: 800;
+	let i32: screen_height <- i32: 450;
+	
+	let vec2: ball_pos <- vec2:
+	{
+		screen_width as f32 * f32: 0.5,
+		screen_height as f32 * f32: 0.5
+	};
+
+	InitWindow(screen_width, screen_height, "Ball!");
+	
+	SetTargetFPS(i32: 60);
+
+    while !WindowShouldClose()
+    {	
+		if IsKeyDown(KEY_RIGHT)
+		{
+			ball_pos.x := (f32 <- ball_pos.x) + f32: 2;
+		};
+		
+		if IsKeyDown(KEY_LEFT)
+		{
+			ball_pos.x := (f32 <- ball_pos.x) - f32: 2;
+		};  
+		
+		if IsKeyDown(KEY_UP)                
+		{                                   
+			ball_pos.y := (f32 <- ball_pos.y) - f32: 2;
+		};
+		
+		if IsKeyDown(KEY_DOWN)
+		{
+			ball_pos.y := (f32 <- ball_pos.y) + f32: 2;
+		};
+		
+	
+        BeginDrawing();
+		
+		ClearBackground(color: {i8: 220, i8: 220, i8: 220, i8: 255});	
+		DrawCircleV(ball_pos, f32: 50, color: {i8: 100, i8: 20, i8: 50, i8: 255}); 
+		DrawText("Move the ball with the arrow keys", i32: 20, i32: 20, i32: 20, color: {i8: 0, i8: 100, i8: 50, i8: 100});
+
+        EndDrawing();
+    };
+    CloseWindow();    
+};

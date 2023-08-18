@@ -1,0 +1,32 @@
+dec extern actn BindingClearBackground(ptr: col);
+dec extern actn BindingDrawCircleV(ptr: pos, f32: r, ptr: col);
+dec extern actn BindingDrawText(ptr: text, i32: x, i32: y, i32: s, ptr: col);
+
+struct color 
+{
+	i8: r,
+	i8: g,
+	i8: b,
+	i8: a
+};
+
+struct vec2 
+{
+	f32: x,
+	f32: y
+};
+
+actn ClearBackground(color: col) 
+{
+	BindingClearBackground(&col);
+};
+
+actn DrawCircleV(vec2: pos, f32: r, color: col)
+{
+	BindingDrawCircleV(&pos, r, &col);
+};
+
+actn DrawText(ptr: text, i32: x, i32: y, i32: s, color: col)
+{
+	BindingDrawText(text, x, y, s, &col);
+};
